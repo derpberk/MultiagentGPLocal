@@ -207,7 +207,7 @@ class A2CAgent:
 			# Compute the actor and critic losses #
 			actor_loss = -(agent_log_probs * advantage.detach()).mean()
 			critic_loss = 0.5 * advantage.pow(2).mean()
-			actor_critics_loss += actor_loss + critic_loss + 0.0001 * entropies[i]
+			actor_critics_loss += actor_loss + critic_loss - 0.001 * entropies[i]
 
 		actor_critics_loss /= self.env.number_of_agents
 
