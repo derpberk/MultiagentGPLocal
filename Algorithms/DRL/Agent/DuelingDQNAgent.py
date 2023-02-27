@@ -168,7 +168,7 @@ class MultiAgentDuelingDQNAgent:
 		""" Select an action masked to avoid collisions and so """
 
 		# Update the state of the safety module #
-		self.safe_masking_module.update_state(position = position, new_navigation_map = state[0])
+		self.safe_masking_module.update_state(position = position, new_navigation_map = self.env.scenario_map)
 
 		if self.epsilon > np.random.rand() and not self.noisy and not deterministic:
 			

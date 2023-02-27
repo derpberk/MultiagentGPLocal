@@ -1,7 +1,7 @@
 import sys
 sys.path.append('.')
 from Environment.InformationGatheringEnvironment import MultiagentInformationGathering
-from Algorithms.DRL.Agent.AdvanteActorCritic import A2CAgent
+from Algorithms.DRL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 
 scenario_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
@@ -26,18 +26,27 @@ env = MultiagentInformationGathering(
             local = True
 )
 
-agent = A2CAgent(env = env,
-				n_steps = None,
-				learning_rate = 1e-4,
-				gamma = 0.99,
-				logdir = 'runs/A2C',
-				log_name = 'A2C',
-				save_every = 1000,
-				device = 'cuda:0'
-)
+agent = MultiAgentDuelingDQNAgent(env = env,
+			memory_size = 100_000,
+			batch_size = 64,
+			target_update = 1000,
+			soft_update = True,
+			tau = 0.001,
+			epsilon_values = [1.0, 0.05],
+			epsilon_interval = [0.0, 0.5],
+			learning_starts = 100,
+			gamma = 0.99,
+			lr = 1e-4,
+			# NN parameters
+			number_of_features = 512,
+			logdir='runs/DuelingDQN',
+			log_name="DQL",
+			save_every=None,
+			train_every=15,
+			masked_actions= True,
+			device='cuda:0',
+			seed = 0,
+			eval_every = 200,
+			eval_episodes = 20)
 
-agent.load_model('Evaluation/best_model.pth')
-
-res = agent.evaluate(5, render = True)
-
-print(res)
+agent.train(10000)
