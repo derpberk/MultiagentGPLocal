@@ -33,7 +33,7 @@ agent = A2CAgent(env = env,
 				logdir = 'runs/A2C',
 				log_name = 'A2C',
 				save_every = 1000,
-				device = 'cuda:0'
+				device = 'cuda:1'
 )
 
 agent.train(10000)

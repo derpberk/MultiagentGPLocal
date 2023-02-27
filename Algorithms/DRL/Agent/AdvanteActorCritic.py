@@ -250,7 +250,7 @@ class A2CAgent:
 				record = mean_reward
 				print(f"New best policy with mean reward of {mean_reward}")
 				print("Saving model in " + self.writer.log_dir)
-				self.save_model(f'best_model_at_episode_{episode}.pth')
+				self.save_model(f'best_model.pth')
 
 			# Save the model every N episodes #
 			if episode % self.save_every == 0:
