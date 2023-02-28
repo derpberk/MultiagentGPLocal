@@ -228,7 +228,8 @@ class MultiagentInformationGathering:
 				 radius_of_locals: float,
 				 distance_budget: float,
 				 distance_between_agents: float,
-				 fleet_initial_positions: np.ndarray,
+				 fleet_initial_positions = None,
+				 fleet_initial_zones = None,
 				 seed: int = 0,
 				 movement_length: int = 1,
 				 max_collisions: int = 1,
@@ -271,14 +272,19 @@ class MultiagentInformationGathering:
 		self.movement_length = movement_length
 		self.max_collisions = max_collisions
 		self.ground_truth_type = ground_truth_type
+		self.fleet_initial_zones = fleet_initial_zones
+
+		self.max_steps = self.distance_budget // self.movement_length
 		
 		# Initial positions
-		if fleet_initial_positions is None:
-			self.random_inititial_positions = True
+		if fleet_initial_positions is None and fleet_initial_zones is None:
 			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), number_of_agents, replace=False)
 			self.initial_positions = self.visitable_locations[random_positions_indx]
+		elif self.fleet_initial_zones is not None:
+				self.random_inititial_positions = True
+				# Obtain the initial positions as random valid positions inside the zones
+				self.initial_positions = np.asarray([region[np.random.randint(0, len(region))] for region in self.fleet_initial_zones])
 		else:
-			self.random_inititial_positions = False
 			self.initial_positions = fleet_initial_positions
    
 		# Create the fleets 
@@ -302,14 +308,14 @@ class MultiagentInformationGathering:
 			self.frame_stacking = MultiAgentTimeStackingMemory(n_agents = self.number_of_agents,
 			 													n_timesteps = frame_stacking - 1, 
 																state_indexes = state_index_stacking, 
-																n_channels = 4)
-			self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(4 + len(state_index_stacking)*(frame_stacking - 1), *self.scenario_map.shape), dtype=np.float32)
+																n_channels = 5)
+			self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5 + len(state_index_stacking)*(frame_stacking - 1), *self.scenario_map.shape), dtype=np.float32)
 
 		else:
 			self.frame_stacking = None
-			self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(4, *self.scenario_map.shape), dtype=np.float32)
+			self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.scenario_map.shape), dtype=np.float32)
 
-		self.state_space = gym.spaces.Box(low=0.0, high=1.0, shape=(4, *self.scenario_map.shape), dtype=np.float32)
+		self.state_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.scenario_map.shape), dtype=np.float32)
 		self.action_space = gym.spaces.Discrete(8)
 
 		
@@ -346,10 +352,22 @@ class MultiagentInformationGathering:
 	def reset(self):
 		""" Reset the variables of the environment """
 
+		self.steps = 0
+
 		# Reset the ground truth #
 		self.gt.reset()
 
-		# Reset the fleet #
+		# Initial positions
+		if self.fleet_initial_positions is None and self.fleet_initial_zones is None:
+			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.number_of_agents, replace=False)
+			self.initial_positions = self.visitable_locations[random_positions_indx]
+		elif self.fleet_initial_zones is not None:
+				self.random_inititial_positions = True
+				# Obtain the initial positions as random valid positions inside the zones
+				self.initial_positions = np.asarray([region[np.random.randint(0, len(region))] for region in self.fleet_initial_zones])
+		else:
+			self.initial_positions = self.fleet_initial_positions
+
 		self.fleet.reset(initial_positions=self.initial_positions)
 
 		# Reset the GP coordinator #
@@ -374,6 +392,8 @@ class MultiagentInformationGathering:
 	def step(self, actions):
 		""" Take a step in the environment """
 
+		self.steps += 1
+
 		# Process action movement only for active agents #
 		collision_mask = self.fleet.move(actions)
 		
@@ -394,6 +414,7 @@ class MultiagentInformationGathering:
 
 		# Check if the episode is done #
 		done = self.check_done()
+		
 
 		# Return the state #
 		return self.state if self.frame_stacking is None else self.frame_stacking.process(self.state), reward, done, {}
@@ -423,10 +444,11 @@ class MultiagentInformationGathering:
 			agent_observation_of_position[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 1.0
 			
 			state[i] = np.concatenate((
-				mu_map[np.newaxis],
+				np.clip(mu_map[np.newaxis], 0, 1),
 				sigma_map[np.newaxis],
-				agent_observation_of_fleet[np.newaxis] + (1-self.scenario_map[np.newaxis]),
-				agent_observation_of_position[np.newaxis]
+				agent_observation_of_fleet[np.newaxis],
+				agent_observation_of_position[np.newaxis],
+				self.scenario_map[np.newaxis].copy()
 			))
 
 		self.state = state
@@ -467,8 +489,14 @@ class MultiagentInformationGathering:
 		done = {agent_id: False for agent_id in range(self.number_of_agents)}
 
 		# Check if the episode is done #
+		"""
 		if self.fleet.fleet_collisions > self.max_collisions or any(self.fleet.get_distances() >= self.distance_budget):
 			done = {agent_id: True for agent_id in range(self.number_of_agents)}
+		"""
+
+		if self.fleet.fleet_collisions > self.max_collisions or self.steps >= self.max_steps:
+			done = {agent_id: True for agent_id in range(self.number_of_agents)}
+
 
 		return done
 		
@@ -479,7 +507,7 @@ class MultiagentInformationGathering:
 
 		if self.fig is None:
 
-			self.fig, self.axs = plt.subplots(1, 5, figsize=(15,5))
+			self.fig, self.axs = plt.subplots(1, 6, figsize=(15,5))
 			
 			# Print the Mu
 			# Create a background for unknown places #
@@ -506,6 +534,9 @@ class MultiagentInformationGathering:
 			# Print the Agent
 			self.im3 = self.axs[4].imshow(self.state[0][3], cmap = 'gray', vmin=0, vmax=1)
 			self.axs[4].set_title(r'Agent')
+			# Print the Map
+			self.im5 = self.axs[5].imshow(self.state[0][4], cmap = 'gray', vmin=0, vmax=1)
+			self.axs[5].set_title(r'Map')
 			# Print the gts
 			self.axs[0].imshow(self.scenario_map * self.gt.read(), cmap = algae_colormap, vmin=0, vmax=1, interpolation='bilinear')
 			try:
@@ -514,10 +545,10 @@ class MultiagentInformationGathering:
 				pass
 			
 			self.axs[0].set_title(r'Ground Truth')
-			self.im4= self.axs[0].plot(self.gp_coordinator.x[:,1], self.gp_coordinator.x[:,0], 'gx', markersize=5)
+			self.im4 = self.axs[0].plot(self.gp_coordinator.x[:,1], self.gp_coordinator.x[:,0], 'gx', markersize=5)
 			# Scatterplot with the position of the agents. Every agent position is in a different color
 			colors = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown', 'gray', 'olive']
-			self.impos = self.axs[0].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, self.number_of_agents), markersize=5)
+			self.impos = self.axs[5].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, self.number_of_agents), markersize=5)
 
 		else:
 			
@@ -525,6 +556,7 @@ class MultiagentInformationGathering:
 			self.im1.set_data(self.state[0][1])
 			self.im2.set_data(self.state[0][2])
 			self.im3.set_data(self.state[0][3])
+			self.im5.set_data(self.state[0][4])
 			# Set the new positions of the agents
 			self.im4[0].set_xdata(self.gp_coordinator.x[:,1])
 			self.im4[0].set_ydata(self.gp_coordinator.x[:,0])
@@ -545,7 +577,7 @@ class MultiagentInformationGathering:
 		""" Compute the MSE error """
 		
 		# Compute the error #
-		error = np.mean((self.gt.read() - self.gp_coordinator.mu_map)**2)
+		error = np.sum((self.gt.read() - self.gp_coordinator.mu_map)**2)
 
 		return error
 		
@@ -557,23 +589,28 @@ if __name__ == '__main__':
 	from Algorithms.NRRA import WanderingAgent
 	import matplotlib.pyplot as plt
 
-	scenario_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+	scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
 	#scenario_map = np.ones((50,50))
 	seed = 1564
 	np.random.seed(seed)
 	
-	N = 4
+	N = 3
 	D = 7
-	visitable = np.argwhere(scenario_map == 1)
-	initial_positions = visitable[np.random.choice(visitable.shape[0], N, replace=False)]
+	# Generate initial positions with squares of size 3 x 3 around positions
+	center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
+	# 9 positions in the sorrounding of the center
+	area_initial_zones = np.array([[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]])
+	# Generate the initial positions with the sum of the center and the area
+	fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
 	env = MultiagentInformationGathering(
 				scenario_map = scenario_map,
 				number_of_agents = N,
 				distance_between_locals = D,
 				radius_of_locals = D*2/3,
-				distance_budget = 150,
+				distance_budget = 120,
 				distance_between_agents = 1,
-				fleet_initial_positions = initial_positions,
+				fleet_initial_zones=fleet_initial_zones,
+				fleet_initial_positions=None,
 				seed = seed,
 				movement_length = 2,
 				max_collisions = 500,
@@ -581,7 +618,7 @@ if __name__ == '__main__':
 				local = True
 	)
 
-	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, forward_direction = np.random.choice([0,2]), seed=seed) for _ in range(N)]
+	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, forward_direction = np.random.choice([1,3,5]), seed=seed) for _ in range(N)]
 	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, seed=seed) for _ in range(N)]
 
 	np.random.seed(seed)
@@ -629,6 +666,7 @@ if __name__ == '__main__':
 	ax2 = ax1.twinx()
 	ax2.plot(ERROR, 'r-')
 	ax2.set_ylabel('Error', color='r')
+	ax2.set_ylim([0, ERROR[0]+5])
 	ax2.tick_params('y', colors='r')
 
 	plt.grid()

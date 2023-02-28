@@ -109,7 +109,8 @@ class LawnMowerAgent:
         if OBS:
             self.initial_action = self.perpendicular_action(self.initial_action)
             self.state = 'FORWARD'
-            
+        
+        print(self.state)
         return self.state_to_action(self.state)
     
     def state_to_action(self, state):
@@ -130,9 +131,9 @@ class LawnMowerAgent:
     def action_to_vector(self, action):
         """ Transform an action to a vector """
 
-        vectors = np.array([[np.cos(2*np.pi*i/self.number_of_actions), np.sin(2*np.pi*i/self.number_of_actions)] for i in range(self.number_of_actions)])
+        vectors = np.round(np.array([[np.cos(2*np.pi*i/self.number_of_actions), np.sin(2*np.pi*i/self.number_of_actions)] for i in range(self.number_of_actions)]))
 
-        return np.round(vectors[action]).astype(int)
+        return vectors[action].astype(int)
     
     def perpendicular_action(self, action):
         """ Compute the perpendicular action """
