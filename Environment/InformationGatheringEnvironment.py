@@ -400,6 +400,9 @@ class MultiagentInformationGathering:
 		# Collision mask to list 
 		collision_mask = np.array(list(collision_mask.values()))
 
+		if any(collision_mask):
+			print('COLLISION!')
+
 		# Take measurements #
 		self.measurements = self.gt.read(self.fleet.agent_positions).reshape(-1,1)
 
@@ -607,13 +610,13 @@ if __name__ == '__main__':
 				number_of_agents = N,
 				distance_between_locals = D,
 				radius_of_locals = D*2/3,
-				distance_budget = 120,
-				distance_between_agents = 1,
+				distance_budget = 170,
+				distance_between_agents = 5,
 				fleet_initial_zones=fleet_initial_zones,
 				fleet_initial_positions=None,
 				seed = seed,
 				movement_length = 2,
-				max_collisions = 500,
+				max_collisions = 5,
 				ground_truth_type = 'algae_bloom',
 				local = True
 	)
@@ -632,7 +635,7 @@ if __name__ == '__main__':
 	runtime = 0
 	while not any(list(done.values())):
 		
-		action = {i: random_wandering_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
+		action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
 
 		t0 = time.time()
 		s, r, done, _ = env.step(action)
