@@ -267,7 +267,6 @@ class MultiAgentDuelingDQNAgent:
 			assert not os.path.exists(self.logdir), "El directorio ya existe. He evitado que se sobrescriba"
 			self.writer = SummaryWriter(log_dir=self.logdir, filename_suffix=self.experiment_name)
 			self.write_experiment_config()
-			self.env.save_environment_configuration(self.logdir if self.logdir is not None else './')
 
 		# Agent in training mode #
 		self.is_eval = False

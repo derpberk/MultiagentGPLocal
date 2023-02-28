@@ -224,7 +224,7 @@ class LocalGaussianProcessCoordinator:
 		""" Return the changes in the local GP model """
 		
 		if index is None:
-			np.array([gp_model.change for gp_model in self.gp_models])
+			np.array([gp_model.change_mu for gp_model in self.gp_models])
 		else:
 			return np.array([self.gp_models[i].change_mu for i in index])
 	

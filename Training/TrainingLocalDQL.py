@@ -4,7 +4,7 @@ from Environment.InformationGatheringEnvironment import MultiagentInformationGat
 from Algorithms.DRL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 
-scenario_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
 
 
 N = 3
@@ -49,7 +49,7 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			save_every=None,
 			train_every=15,
 			masked_actions= True,
-			device='cuda:0',
+			device='cuda:1',
 			seed = 0,
 			eval_every = 200,
 			eval_episodes = 20)
