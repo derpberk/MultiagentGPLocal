@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch import optim
+import torch.nn.functional as F
 from Algorithms.DRL.Networks.FeatureExtractors import FeatureExtractor
 import numpy as np
 
@@ -51,7 +52,8 @@ class A2C(nn.Module):
 			nn.ReLU(),
 			nn.Linear(256, 128),
 			nn.ReLU(),
-			nn.Linear(128, n_actions),  # estimate action logits (will be fed into a softmax later)
+			nn.Linear(128, n_actions),
+			nn.Softmax(dim=1) # estimate action logits (will be fed into a softmax later)
 		).to(self.device)
 
 
@@ -94,7 +96,7 @@ class A2C(nn.Module):
 			action_logits = (action_logits * action_mask).clip(min=1e-10)
 
 
-		action_pd = torch.distributions.Categorical(logits=action_logits)  # implicitly uses softmax
+		action_pd = torch.distributions.Categorical(probs=action_logits)  # implicitly uses softmax
 		actions = action_pd.sample()
 		action_log_probs = action_pd.log_prob(actions)
 		entropy = action_pd.entropy()

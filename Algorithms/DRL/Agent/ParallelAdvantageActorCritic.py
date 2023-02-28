@@ -36,12 +36,13 @@ def outside_sample_batch(environment, n_steps, device, A2C):
 
 		# Update the action masks #
 		action_masks = np.zeros((state_tensor.shape[0], environment.action_space.n))
+
 		for agent_id in range(n_agents):
 			# Update the navigation map #
 			safe_masking_module.update_state(environment.fleet.get_positions()[agent_id], environment.scenario_map)
 			action_mask, _ = safe_masking_module.mask_action(np.ones((environment.action_space.n, )).astype(float))
 			# Update the nogoback mask #
-			nogoback_masking_modules[agent_id].mask_action(action_mask)
+			action_mask, _ = nogoback_masking_modules[agent_id].mask_action(action_mask)
 			# Update the mask #
 			action_masks[agent_id] = action_mask
 
@@ -49,6 +50,10 @@ def outside_sample_batch(environment, n_steps, device, A2C):
 		actions, action_log_probs, state_value_preds, entropy = A2C.select_action(state_tensor, action_mask=torch.Tensor(action_masks).clamp_min(0.0).to(device=device))
 
 		action_dict = {i: actions[i].item() for i in range(n_agents)}
+
+		for agent_id in range(n_agents):
+			# Update the nogoback mask #
+			nogoback_masking_modules[agent_id].update_last_action(action_dict[agent_id])
 
 		# Perform the action in the environment #
 		next_state, rewards, dones, _ = environment.step(action_dict)
@@ -82,7 +87,7 @@ class AsyncronousActorCritic:
 				device,
 				save_every = 100,
 				logdir = 'runs',
-				log_name = 'A2C'
+				log_name = 'A2C_parallel'
 				):
 		
 		self.envs = envs
@@ -121,63 +126,6 @@ class AsyncronousActorCritic:
 		self.safe_masking_module = SafeActionMasking(action_space_dim = self.envs[0].action_space.n, movement_length = self.envs[0].movement_length)
 		self.nogoback_masking_modules = {i: NoGoBackMasking() for i in range(self.n_agents)}
 
-
-
-	def sample_batch(self, env_id: int):
-		""" Sample a batch of experiences from the environment with the given id. """
-
-		# Initialize the lists that will contain the experiences #
-		ep_value_preds = torch.zeros(self.n_steps, self.n_agents, device=self.device)
-		ep_rewards = torch.zeros(self.n_steps, self.n_agents, device=self.device)
-		ep_action_log_probs = torch.zeros(self.n_steps, self.n_agents, device=self.device)
-		ep_entropies = torch.zeros(self.n_steps, self.n_agents, device=self.device)
-
-		masks = torch.zeros(self.n_steps, self.n_agents, device=self.device)
-
-		for module in self.nogoback_masking_modules.values():
-			module.reset()
-
-		# Play N steps in the environment #
-		# Reset the environment if it is done #
-		state = self.envs[env_id].reset()
-
-		for step in range(self.n_steps):
-			
-			# Transform the state from a dictionary into a tensor. Every key is a different agent #
-			state_tensor = torch.tensor(np.asarray([state[i] for i in range(self.n_agents)]), device=self.device, dtype=torch.float)
-
-			# Update the action masks #
-			action_masks = np.zeros((state_tensor.shape[0], self.envs[env_id].action_space.n))
-			for agent_id in range(self.n_agents):
-				# Update the navigation map #
-				self.safe_masking_module.update_state(self.envs[env_id].fleet.get_positions()[agent_id], self.envs[env_id].scenario_map)
-				action_mask, _ = self.safe_masking_module.mask_action(np.ones((self.envs[env_id].action_space.n, )).astype(float))
-				# Update the nogoback mask #
-				self.nogoback_masking_modules[agent_id].mask_action(action_mask)
-				# Update the mask #
-				action_masks[agent_id] = action_mask
-
-			# Get the action log probabilities and the value prediction for the current state #
-			actions, action_log_probs, state_value_preds, entropy = self.A2C.select_action(state_tensor, action_mask=torch.Tensor(action_masks).clamp_min(0.0).to(device=self.device))
-
-			action_dict = {i: actions[i].item() for i in range(self.n_agents)}
-
-			# Perform the action in the environment #
-			next_state, rewards, dones, _ = self.envs[env_id].step(action_dict)
-
-			ep_value_preds[step] = torch.squeeze(state_value_preds)
-			ep_rewards[step] = torch.tensor(np.array(list(rewards.values())), device=self.device)
-			ep_action_log_probs[step] = action_log_probs
-			ep_entropies[step] = entropy
-
-			# add a mask (for the return calculation later);
-			# for each env the mask is 1 if the episode is ongoing and 0 if it is terminated (not by truncation!)
-			masks[step] = torch.tensor([not done for done in dones.values()])
-
-			# Update the state #
-			state = next_state
-
-		return ep_rewards, ep_action_log_probs, ep_value_preds, entropy, masks
 	
 	def join_batches(self, batches):
 
@@ -228,14 +176,24 @@ class AsyncronousActorCritic:
 			self.A2C.update_parameters(critic_loss, actor_loss)
 
 			# Publish the metrics #
-			#self.publish_metrics(ep_rewards.sum(dim=0).mean().item(), entropy.item(), actor_loss.item(), critic_loss.item(), episode)
+			self.publish_metrics(ep_rewards.sum(dim=0).mean().item(), entropy.item(), actor_loss.item(), critic_loss.item(), episode)
 
+			# Save the model #
+			if episode % self.save_every == 0:
+				self.save_model("policy_episode_{}.pth".format(episode))
 
+	def publish_metrics(self, rewards, entropy, actor_loss, critic_loss, episode):
+			""" Write in the Tensorboard the total final reward, the length of the episode and the losses """
 
-def publish_metrics(self, rewards, entropy, actor_loss, critic_loss, episode):
-		""" Write in the Tensorboard the total final reward, the length of the episode and the losses """
+			self.writer.add_scalar('Train/Total reward', rewards, episode)
+			self.writer.add_scalar('Train/Actor loss', actor_loss, episode)
+			self.writer.add_scalar('Train/Critic loss', critic_loss, episode)
+			self.writer.add_scalar('Train/Entropy', entropy, episode)
 
-		self.writer.add_scalar('Train/Total reward', rewards, episode)
-		self.writer.add_scalar('Train/Actor loss', actor_loss, episode)
-		self.writer.add_scalar('Train/Critic loss', critic_loss, episode)
-		self.writer.add_scalar('Train/Entropy', entropy, episode)
+	def load_model(self, path_to_file):
+
+		self.A2C.load_state_dict(torch.load(path_to_file, map_location=self.device))
+
+	def save_model(self, name='experiment.pth'):
+
+		torch.save(self.A2C.state_dict(), self.writer.log_dir + '/' + name)

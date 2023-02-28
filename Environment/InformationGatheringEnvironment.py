@@ -611,7 +611,7 @@ if __name__ == '__main__':
 				distance_between_locals = D,
 				radius_of_locals = D*2/3,
 				distance_budget = 170,
-				distance_between_agents = 5,
+				distance_between_agents = 1,
 				fleet_initial_zones=fleet_initial_zones,
 				fleet_initial_positions=None,
 				seed = seed,
