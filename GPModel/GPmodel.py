@@ -212,15 +212,13 @@ class LocalGaussianProcessCoordinator:
 		for gp_model in self.gp_models:
 			gp_model.reset()
 
-	def get_local_gp_index(self, position):
-		""" Return the index of the local GP model that is nearest to the position """
-		if len(self.gp_models) > 1:
-			distance = [self.get_distance(position, self.gp_models[i].position) for i in range(len(self.gp_models))]
-			nearest_gp_index = np.argmin(distance)
-		else:
-			nearest_gp_index = 0
-		
-		return nearest_gp_index
+	def get_local_gp_indexes(self, position):
+		""" Return the indexes of the local GP models that are closer than distance_threshold to the new data """
+
+		# Compute the distance between the new data and the local GP models #
+		nearest_gp_indexes = np.array([j for j in range(len(self.gp_models)) if self.get_distance(position, self.gp_models[j].position) <= self.distance_threshold])
+
+		return nearest_gp_indexes
 	
 	def get_local_gp_changes(self, index = None):
 		""" Return the changes in the local GP model """

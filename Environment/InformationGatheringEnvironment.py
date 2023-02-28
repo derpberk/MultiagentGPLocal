@@ -322,6 +322,7 @@ class MultiagentInformationGathering:
   
 		# Select the points that are are in 1 in the map
 		gp_positions = gp_positions[self.scenario_map[gp_positions[:,0].astype(int), gp_positions[:,1].astype(int)] == 1]
+		self.radius_of_locals = radius_of_locals
   		# Create the GP coordinator	
 		self.local = local
 		if self.local:
@@ -434,17 +435,22 @@ class MultiagentInformationGathering:
 		""" Compute the reward of the environment """
 
 		# 1) obtain the index of the local GP of every agent
-		agent_local_gp_index = np.array([self.gp_coordinator.get_local_gp_index(pos) for pos in self.fleet.agent_positions])
+		agent_local_gp_index = [self.gp_coordinator.get_local_gp_indexes(pos) for pos in self.fleet.agent_positions]
 
 		# 2) obtain the changes in those local_gps
-		changes = self.gp_coordinator.get_local_gp_changes(agent_local_gp_index)
+		changes = [np.sum(self.gp_coordinator.get_local_gp_changes(indexes)) for indexes in agent_local_gp_index]
 
-		# 3) Compute how many agents are in each local GP
-		agents_per_local_gp = np.bincount(agent_local_gp_index)[agent_local_gp_index]
+		# 3) Compute the distance between agents
+		distance_between_agents = distance_matrix(self.fleet.agent_positions, self.fleet.agent_positions) # Compute the distance matrix
+		distance_between_agents[distance_between_agents <= 1] = 1.0 # Clip the min to 1.0 
+		distance_between_agents[distance_between_agents > self.radius_of_locals] = np.inf # If the distance is greater than the radius of the local gp, set it to infinity
+		np.fill_diagonal(distance_between_agents, 1.0) # Set the diagonal to 1.0 to simplify the computation of the redundancy
+		distance_between_agents = 1.0 / distance_between_agents # Compute the inverse of the distance
+		redundancy = np.sum(distance_between_agents, axis=1) # Compute the redundancy of each agent
 
 		# 4) Compute the reward
 		if self.local:
-			reward = {agent_id: changes[agent_id] / agents_per_local_gp[agent_id] for agent_id in range(self.number_of_agents)}
+			reward = {agent_id: changes[agent_id] / redundancy[agent_id] for agent_id in range(self.number_of_agents)}
 		else:
 			reward = {agent_id: changes for agent_id in range(self.number_of_agents)}
 
@@ -509,7 +515,10 @@ class MultiagentInformationGathering:
 			
 			self.axs[0].set_title(r'Ground Truth')
 			self.im4= self.axs[0].plot(self.gp_coordinator.x[:,1], self.gp_coordinator.x[:,0], 'gx', markersize=5)
-			
+			# Scatterplot with the position of the agents. Every agent position is in a different color
+			colors = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown', 'gray', 'olive']
+			self.impos = self.axs[0].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, self.number_of_agents), markersize=5)
+
 		else:
 			
 			self.im0.set_data(self.state[0][0])
@@ -522,6 +531,7 @@ class MultiagentInformationGathering:
 			params = self.gp_coordinator.get_kernel_params()
 			for i in range(len(params)):
 				self.text[i].set_text("{:.1f}".format(params[i]))
+			self.impos[0].set_data(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0])
 			
 
 		self.fig.canvas.draw()
