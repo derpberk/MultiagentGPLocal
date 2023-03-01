@@ -375,9 +375,10 @@ class MultiAgentDuelingDQNAgent:
 
 			if self.eval_every is not None:
 				if episode % self.eval_every == 0:
-					mean_reward, mean_length = self.evaluate_env(self.eval_episodes)
+					mean_reward, mean_length, mean_error = self.evaluate_env(self.eval_episodes)
 					self.writer.add_scalar('test/accumulated_reward', mean_reward, self.episode)
 					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
+					self.writer.add_scalar('test/mean_error', mean_length, self.episode)
 
 					if mean_reward > record:
 						print(f"New best policy with mean reward of {mean_reward}")
