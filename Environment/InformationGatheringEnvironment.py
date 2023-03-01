@@ -607,8 +607,7 @@ class MultiagentInformationGathering:
 		""" Compute the MSE error """
 		
 		# Compute the error #
-		error = np.sum((self.gt.read() - self.gp_coordinator.mu_map)**2)
-
+		error = np.sum(np.abs((self.gt.read() - self.gp_coordinator.mu_map)))
 		return error
 		
 		

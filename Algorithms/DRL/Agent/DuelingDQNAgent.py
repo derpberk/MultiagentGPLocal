@@ -378,7 +378,7 @@ class MultiAgentDuelingDQNAgent:
 					mean_reward, mean_length, mean_error = self.evaluate_env(self.eval_episodes)
 					self.writer.add_scalar('test/accumulated_reward', mean_reward, self.episode)
 					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
-					self.writer.add_scalar('test/mean_error', mean_length, self.episode)
+					self.writer.add_scalar('test/mean_error', mean_error, self.episode)
 
 					if mean_reward > record:
 						print(f"New best policy with mean reward of {mean_reward}")
@@ -497,6 +497,7 @@ class MultiAgentDuelingDQNAgent:
 		self.dqn.eval()
 		total_reward = 0
 		total_length = 0
+		total_error = 0
 
 		for _ in trange(eval_episodes):
 
@@ -525,7 +526,6 @@ class MultiAgentDuelingDQNAgent:
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
 
-				print(reward)
 
 				if render:
 					self.env.render()
@@ -535,11 +535,13 @@ class MultiAgentDuelingDQNAgent:
 				
 				total_reward += np.sum(list(reward.values()))
 
+			total_error += self.env.get_error()
+
 		self.dqn.train()
 
 		# Return the average reward, average length
 
-		return total_reward / eval_episodes, total_length / eval_episodes
+		return total_reward / eval_episodes, total_length / eval_episodes, total_error / eval_episodes
 
 	def write_experiment_config(self):
 		""" Write experiment and environment variables in a json file """
