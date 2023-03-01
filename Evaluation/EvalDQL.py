@@ -4,7 +4,7 @@ from Environment.InformationGatheringEnvironment import MultiagentInformationGat
 from Algorithms.DRL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 
-scenario_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
 N = 3
 D = 7
 # Generate initial positions with squares of size 3 x 3 around positions
@@ -18,11 +18,11 @@ env = MultiagentInformationGathering(
 			number_of_agents = N,
 			distance_between_locals = D,
 			radius_of_locals = D*2/3,
-			distance_budget = 170,
+			distance_budget = 120,
 			distance_between_agents = 5,
 			fleet_initial_zones=fleet_initial_zones,
 			fleet_initial_positions=None,
-			seed = 0,
+			seed = 23,
 			movement_length = 2,
 			max_collisions = 5,
 			ground_truth_type = 'algae_bloom',
@@ -51,6 +51,8 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			seed = 0,
 			eval_every = 200,
 			eval_episodes = 20)
+
+agent.epsilon = 0.0
 
 agent.load_model('Evaluation/BestPolicy.pth')
 

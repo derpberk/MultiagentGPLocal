@@ -353,14 +353,6 @@ class MultiAgentDuelingDQNAgent:
 					# Log progress
 					self.log_data()
 
-					# Save policy if is better on average
-					mean_episodic_reward = np.mean(episodic_reward_vector[-50:])
-					if mean_episodic_reward > record:
-						print(f"New best policy with mean reward of {mean_episodic_reward}")
-						print("Saving model in " + self.writer.log_dir)
-						record = mean_episodic_reward
-						self.save_model(name='BestPolicy.pth')
-
 				# If training is ready
 				if len(self.memory) >= self.batch_size and episode >= self.learning_starts:
 
@@ -387,8 +379,18 @@ class MultiAgentDuelingDQNAgent:
 					self.writer.add_scalar('test/accumulated_reward', mean_reward, self.episode)
 					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
 
+					if mean_reward > record:
+						print(f"New best policy with mean reward of {mean_episodic_reward}")
+						print("Saving model in " + self.writer.log_dir)
+						record = mean_reward
+						try:
+							self.save_model(name='BestPolicy.pth')
+						except:
+							print("Error saving model")
+
+					
 		# Save the final policy #
-		self.save_model(name='Final_Policy.pth')
+		self.save_model(name='FinalPolicy.pth')
 
 	def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
 
@@ -521,6 +523,8 @@ class MultiAgentDuelingDQNAgent:
 
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
+
+				print(actions)
 
 				if render:
 					self.env.render()

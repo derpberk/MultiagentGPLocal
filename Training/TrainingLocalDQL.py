@@ -49,7 +49,7 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			save_every=None,
 			train_every=15,
 			masked_actions= True,
-			device='cuda:1',
+			device='cuda:0',
 			seed = 0,
 			eval_every = 200,
 			eval_episodes = 20)

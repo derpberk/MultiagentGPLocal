@@ -630,6 +630,8 @@ if __name__ == '__main__':
 	done = {i:False for i in range(N)}
 	R = []
 	ERROR = []
+	UNCERTAINTY = []
+
 	t = 0
 
 	runtime = 0
@@ -646,6 +648,7 @@ if __name__ == '__main__':
 
 		R.append(np.sum(list(r.values())))
 		ERROR.append(env.get_error())
+		UNCERTAINTY.append(env.gp_coordinator.sigma_map.sum())
 
 		print(r)
 		t+=1
@@ -679,6 +682,30 @@ if __name__ == '__main__':
 	plt.scatter(Racc, ERROR)
 	plt.xlabel('Reward')
 	plt.ylabel('Error')
+	plt.grid()
+	plt.show()
+
+	# Plot the accumulated reward and the error, in the same plot different y axis
+	fig, ax1 = plt.subplots()
+	ax1.plot(Racc, 'b-')
+	ax1.set_xlabel('Time')
+	# Make the y-axis label, ticks and tick labels match the line color.
+	ax1.set_ylabel('Accumulated Reward', color='b')
+	ax1.tick_params('y', colors='b')
+
+	ax2 = ax1.twinx()
+	ax2.plot(UNCERTAINTY, 'r-')
+	ax2.set_ylabel('Uncertainty', color='r')
+	ax2.set_ylim([0, UNCERTAINTY[0]+5])
+	ax2.tick_params('y', colors='r')
+
+	plt.grid()
+	plt.show()
+
+	# Scatter plot with x = Reward and y = Error
+	plt.scatter(Racc, UNCERTAINTY)
+	plt.xlabel('Reward')
+	plt.ylabel('Uncertainty')
 	plt.grid()
 	plt.show()
 
