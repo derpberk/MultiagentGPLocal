@@ -17,20 +17,19 @@ env = MultiagentInformationGathering(
 			scenario_map = scenario_map,
 			number_of_agents = N,
 			distance_between_locals = D,
-			radius_of_locals = D*2/3,
-			distance_budget = 120,
-			distance_between_agents = 5,
+			radius_of_locals = np.sqrt(2) * D / 2,
+			distance_budget = 100,
+			distance_between_agents = 1,
 			fleet_initial_zones=fleet_initial_zones,
 			fleet_initial_positions=None,
-			seed = 23,
+			seed = 0,
 			movement_length = 2,
 			max_collisions = 5,
 			ground_truth_type = 'algae_bloom',
 			local = True
 )
-
 agent = MultiAgentDuelingDQNAgent(env = env,
-			memory_size = 100_000,
+			memory_size = 10,
 			batch_size = 64,
 			target_update = 1000,
 			soft_update = True,
@@ -52,11 +51,10 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			eval_every = 200,
 			eval_episodes = 20)
 
-agent.epsilon = 0.0
 
-agent.load_model('Evaluation/BestPolicy.pth')
+agent.load_model('runs/DuelingDQN/BestPolicy.pth')
 
-res = agent.evaluate_env(5, render = True)
+res = agent.evaluate_env(50, render = True)
 
 print(res)
 

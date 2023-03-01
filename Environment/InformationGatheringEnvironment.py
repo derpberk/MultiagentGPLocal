@@ -354,8 +354,13 @@ class MultiagentInformationGathering:
 
 		self.steps = 0
 
+		if self.fig is not None:
+			plt.close(self.fig)
+			self.fig = None
+
 		# Reset the ground truth #
 		self.gt.reset()
+		self.gt.step()
 
 		# Initial positions
 		if self.fleet_initial_positions is None and self.fleet_initial_zones is None:
@@ -463,16 +468,21 @@ class MultiagentInformationGathering:
 		changes = [np.sum(self.gp_coordinator.get_local_gp_changes(indexes)) for indexes in agent_local_gp_index]
 
 		# 3) Compute the distance between agents
-		distance_between_agents = distance_matrix(self.fleet.agent_positions, self.fleet.agent_positions) # Compute the distance matrix
+		d_matrix = distance_matrix(self.fleet.agent_positions, self.fleet.agent_positions) # Compute the distance matrix
+		distance_between_agents = d_matrix.copy() # Copy the distance matrix
 		distance_between_agents[distance_between_agents <= 1] = 1.0 # Clip the min to 1.0 
 		distance_between_agents[distance_between_agents > self.radius_of_locals] = np.inf # If the distance is greater than the radius of the local gp, set it to infinity
 		np.fill_diagonal(distance_between_agents, 1.0) # Set the diagonal to 1.0 to simplify the computation of the redundancy
 		distance_between_agents = 1.0 / distance_between_agents # Compute the inverse of the distance
 		redundancy = np.sum(distance_between_agents, axis=1) # Compute the redundancy of each agent
 
+		# Compute penalizations for being too close to other agents
+		np.fill_diagonal(d_matrix, np.inf)
+		penalization = np.sum(d_matrix <= self.movement_length, axis=1).astype(int)
+		
 		# 4) Compute the reward
 		if self.local:
-			reward = {agent_id: changes[agent_id] / redundancy[agent_id] for agent_id in range(self.number_of_agents)}
+			reward = {agent_id: changes[agent_id] / redundancy[agent_id] - penalization[agent_id] for agent_id in range(self.number_of_agents)}
 		else:
 			reward = {agent_id: changes for agent_id in range(self.number_of_agents)}
 
@@ -593,7 +603,6 @@ if __name__ == '__main__':
 	#scenario_map = np.ones((50,50))
 	seed = 1564
 	np.random.seed(seed)
-	
 	N = 3
 	D = 7
 	# Generate initial positions with squares of size 3 x 3 around positions
@@ -603,107 +612,62 @@ if __name__ == '__main__':
 	# Generate the initial positions with the sum of the center and the area
 	fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
 	env = MultiagentInformationGathering(
-				scenario_map = scenario_map,
-				number_of_agents = N,
-				distance_between_locals = D,
-				radius_of_locals = D*2/3,
-				distance_budget = 100,
-				distance_between_agents = 1,
-				fleet_initial_zones=fleet_initial_zones,
-				fleet_initial_positions=None,
-				seed = seed,
-				movement_length = 2,
-				max_collisions = 5,
-				ground_truth_type = 'algae_bloom',
-				local = True
-	)
+			scenario_map = scenario_map,
+			number_of_agents = N,
+			distance_between_locals = D,
+			radius_of_locals = np.sqrt(2) * D / 2,
+			distance_budget = 100,
+			distance_between_agents = 1,
+			fleet_initial_zones=fleet_initial_zones,
+			fleet_initial_positions=None,
+			seed = 5,
+			movement_length = 2,
+			max_collisions = 20,
+			ground_truth_type = 'algae_bloom',
+			local = True
+)
 
 	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, forward_direction = np.random.choice([1,3,5]), seed=seed) for _ in range(N)]
 	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, seed=seed) for _ in range(N)]
 
-	np.random.seed(seed)
-	env.reset()
+	for _ in range(10):
 
-	done = {i:False for i in range(N)}
-	R = []
-	ERROR = []
-	UNCERTAINTY = []
+		env.reset()
 
-	t = 0
+		done = {i:False for i in range(N)}
+		R = []
+		ERROR = []
+		UNCERTAINTY = []
 
-	runtime = 0
-	while not any(list(done.values())):
+		t = 0
+
+		runtime = 0
+		while not any(list(done.values())):
+			
+			action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
+
+			t0 = time.time()
+			s, r, done, _ = env.step(action)
+			t1 = time.time()
+
+			runtime += t1-t0
+			env.render()
+
+			R.append(np.sum(list(r.values())))
+			ERROR.append(env.get_error())
+			UNCERTAINTY.append(env.gp_coordinator.sigma_map.sum())
+
+			print(r)
+			t+=1
+
+		R = np.array(R)
+		Racc = np.cumsum(R)
 		
-		action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
-
-		t0 = time.time()
-		s, r, done, _ = env.step(action)
-		t1 = time.time()
-
-		runtime += t1-t0
 		env.render()
+		plt.show()
 
-		R.append(np.sum(list(r.values())))
-		ERROR.append(env.get_error())
-		UNCERTAINTY.append(env.gp_coordinator.sigma_map.sum())
+		print('Total runtime: ', runtime)
 
-		print(r)
-		t+=1
-
-	R = np.array(R)
-	Racc = np.cumsum(R)
-	
-	env.render()
-	plt.show()
-
-	print('Total runtime: ', runtime)
-
-	# Plot the accumulated reward and the error, in the same plot different y axis
-	fig, ax1 = plt.subplots()
-	ax1.plot(Racc, 'b-')
-	ax1.set_xlabel('Time')
-	# Make the y-axis label, ticks and tick labels match the line color.
-	ax1.set_ylabel('Accumulated Reward', color='b')
-	ax1.tick_params('y', colors='b')
-
-	ax2 = ax1.twinx()
-	ax2.plot(ERROR, 'r-')
-	ax2.set_ylabel('Error', color='r')
-	ax2.set_ylim([0, ERROR[0]+5])
-	ax2.tick_params('y', colors='r')
-
-	plt.grid()
-	plt.show()
-
-	# Scatter plot with x = Reward and y = Error
-	plt.scatter(Racc, ERROR)
-	plt.xlabel('Reward')
-	plt.ylabel('Error')
-	plt.grid()
-	plt.show()
-
-	# Plot the accumulated reward and the error, in the same plot different y axis
-	fig, ax1 = plt.subplots()
-	ax1.plot(Racc, 'b-')
-	ax1.set_xlabel('Time')
-	# Make the y-axis label, ticks and tick labels match the line color.
-	ax1.set_ylabel('Accumulated Reward', color='b')
-	ax1.tick_params('y', colors='b')
-
-	ax2 = ax1.twinx()
-	ax2.plot(UNCERTAINTY, 'r-')
-	ax2.set_ylabel('Uncertainty', color='r')
-	ax2.set_ylim([0, UNCERTAINTY[0]+5])
-	ax2.tick_params('y', colors='r')
-
-	plt.grid()
-	plt.show()
-
-	# Scatter plot with x = Reward and y = Error
-	plt.scatter(Racc, UNCERTAINTY)
-	plt.xlabel('Reward')
-	plt.ylabel('Uncertainty')
-	plt.grid()
-	plt.show()
+		
 
 

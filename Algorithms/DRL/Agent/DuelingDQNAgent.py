@@ -524,6 +524,8 @@ class MultiAgentDuelingDQNAgent:
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
 
+				print(reward)
+
 				if render:
 					self.env.render()
 

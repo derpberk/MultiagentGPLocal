@@ -26,7 +26,7 @@ env = MultiagentInformationGathering(
 			fleet_initial_positions=None,
 			seed = 0,
 			movement_length = 2,
-			max_collisions = 20,
+			max_collisions = 5,
 			ground_truth_type = 'algae_bloom',
 			local = True
 )
@@ -49,7 +49,7 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			save_every=1000,
 			train_every=10,
 			masked_actions= True,
-			device='cuda:1',
+			device='cuda:0',
 			seed = 0,
 			eval_every = 200,
 			eval_episodes = 50,)

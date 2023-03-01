@@ -13,7 +13,7 @@ class algae_bloom:
     def __init__(self, grid: np.ndarray, dt = 0.2, seed = 0) -> None:
         """ Generador de ground truths de algas con dinámica """
 
-        np.random.seed(seed)
+
         # Creamos un mapa vacio #
         self.map = np.zeros_like(grid)
         self.grid = grid
@@ -29,6 +29,7 @@ class algae_bloom:
         #self.contour_currents_y = convolve(self.grid, np.array([[0,0,0,0,0],[0,0,0,0,0],[0,0,1,0,0],[0,0,-1,0,0],[0,0,-2,0,0]]), mode='constant')
         self.contour_currents_x = convolve(self.grid, np.array([[0,0,0],[0,1,-1],[0,0,0]]), mode='constant')*2
         self.contour_currents_y = convolve(self.grid, np.array([[0,0,0],[0,1,0],[0,-1,0]]), mode='constant')*2
+
     def reset(self):
 
         starting_point = np.array((np.random.randint(self.map.shape[0]/4, 3*self.map.shape[0]/4), np.random.randint(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
@@ -36,6 +37,9 @@ class algae_bloom:
         
         starting_point = np.array((np.random.randint(self.map.shape[0]/4, 3*self.map.shape[0]/4), np.random.randint(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
         self.particles = np.vstack(( self.particles, np.random.multivariate_normal(starting_point, np.array([[3.0, 0.0],[0.0, 3.0]]),size=(100,))))
+
+        self.current_field_fn = np.vectorize(self.current_field, signature="(n) -> (n)")
+        self.apply_bounds_fn = np.vectorize(self.apply_bounds, signature="(n) -> (n)")
 
         self.in_bound_particles = np.array([particle for particle in self.particles if self.is_inside(particle)])
         self.map[self.in_bound_particles[:,0].astype(int), self.in_bound_particles[:, 1].astype(int)] = 1.0
