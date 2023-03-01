@@ -19,14 +19,14 @@ env = MultiagentInformationGathering(
 			scenario_map = scenario_map,
 			number_of_agents = N,
 			distance_between_locals = D,
-			radius_of_locals = D*2/3,
-			distance_budget = 120,
+			radius_of_locals = np.sqrt(2) * D / 2,
+			distance_budget = 100,
 			distance_between_agents = 1,
 			fleet_initial_zones=fleet_initial_zones,
 			fleet_initial_positions=None,
 			seed = 0,
 			movement_length = 2,
-			max_collisions = 5,
+			max_collisions = 20,
 			ground_truth_type = 'algae_bloom',
 			local = True
 )
@@ -46,12 +46,12 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			number_of_features = 512,
 			logdir='runs/DuelingDQN',
 			log_name="DQL",
-			save_every=None,
+			save_every=1000,
 			train_every=15,
 			masked_actions= True,
 			device='cuda:0',
 			seed = 0,
 			eval_every = 200,
-			eval_episodes = 20)
+			eval_episodes = 50,)
 
 agent.train(10000)

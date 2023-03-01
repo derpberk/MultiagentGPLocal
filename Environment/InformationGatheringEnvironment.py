@@ -400,9 +400,6 @@ class MultiagentInformationGathering:
 		# Collision mask to list 
 		collision_mask = np.array(list(collision_mask.values()))
 
-		if any(collision_mask):
-			print('COLLISION!')
-
 		# Take measurements #
 		self.measurements = self.gt.read(self.fleet.agent_positions).reshape(-1,1)
 
@@ -610,7 +607,7 @@ if __name__ == '__main__':
 				number_of_agents = N,
 				distance_between_locals = D,
 				radius_of_locals = D*2/3,
-				distance_budget = 170,
+				distance_budget = 100,
 				distance_between_agents = 1,
 				fleet_initial_zones=fleet_initial_zones,
 				fleet_initial_positions=None,
