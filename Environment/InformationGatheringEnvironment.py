@@ -461,11 +461,22 @@ class MultiagentInformationGathering:
 	def compute_reward(self, collisions):
 		""" Compute the reward of the environment """
 
-		# 1) obtain the index of the local GP of every agent
-		agent_local_gp_index = [self.gp_coordinator.get_local_gp_indexes(pos) for pos in self.fleet.agent_positions]
 
-		# 2) obtain the changes in those local_gps
-		changes = [np.sum(self.gp_coordinator.get_local_gp_changes(indexes)) for indexes in agent_local_gp_index]
+		# 1) obtain the changes in the surrogate model MU
+		changes_values, _ = self.gp_coordinator.get_changes()
+		
+		# 2) Compute the surroundings for every agent
+		redundancy = np.zeros(self.gp_coordinator.X.shape[0])
+		agent_changes = np.zeros(self.number_of_agents)
+
+		# Compute the redundancy and the changes for every agent
+		for agent_id, position in enumerate(self.fleet.get_positions()):
+			indexes = np.linalg.norm(self.gp_coordinator.X - position, axis=1) <= self.gp_coordinator.distance_threshold
+			redundancy[indexes] += 1
+
+		for agent_id, position in enumerate(self.fleet.get_positions()):	
+			indexes = np.linalg.norm(self.gp_coordinator.X - position, axis=1) <= self.gp_coordinator.distance_threshold
+			agent_changes[agent_id] = np.sum(np.abs(changes_values[indexes])/redundancy[indexes])
 
 		# 3) Compute the distance between agents
 		d_matrix = distance_matrix(self.fleet.agent_positions, self.fleet.agent_positions) # Compute the distance matrix
@@ -482,9 +493,9 @@ class MultiagentInformationGathering:
 		
 		# 4) Compute the reward
 		if self.local:
-			reward = {agent_id: changes[agent_id] / redundancy[agent_id] - penalization[agent_id] for agent_id in range(self.number_of_agents)}
+			reward = {agent_id: agent_changes[agent_id] - penalization[agent_id] for agent_id in range(self.number_of_agents)}
 		else:
-			reward = {agent_id: changes for agent_id in range(self.number_of_agents)}
+			reward = {agent_id: agent_changes for agent_id in range(self.number_of_agents)}
 
 		# 5) Add a penalty for collisions
 		for agent_id in range(self.number_of_agents):
@@ -545,7 +556,7 @@ class MultiagentInformationGathering:
 			self.im3 = self.axs[4].imshow(self.state[0][3], cmap = 'gray', vmin=0, vmax=1)
 			self.axs[4].set_title(r'Agent')
 			# Print the Map
-			self.im5 = self.axs[5].imshow(self.state[0][4], cmap = 'gray', vmin=0, vmax=1)
+			self.im5 = self.axs[5].imshow(self.state[0][4], cmap = 'gray', vmin=-1, vmax=1)
 			self.axs[5].set_title(r'Map')
 			# Print the gts
 			self.axs[0].imshow(self.scenario_map * self.gt.read(), cmap = algae_colormap, vmin=0, vmax=1, interpolation='bilinear')
@@ -559,6 +570,10 @@ class MultiagentInformationGathering:
 			# Scatterplot with the position of the agents. Every agent position is in a different color
 			colors = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown', 'gray', 'olive']
 			self.impos = self.axs[5].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, self.number_of_agents), markersize=5)
+			# Add text with the agent id
+			self.agnumtext = []
+			for i in range(self.number_of_agents):
+				self.agnumtext.append(self.axs[5].text(self.fleet.agent_positions[i,1], self.fleet.agent_positions[i,0], str(i), color='black', fontsize=8, horizontalalignment='center', verticalalignment='center'))
 
 		else:
 			
@@ -566,7 +581,8 @@ class MultiagentInformationGathering:
 			self.im1.set_data(self.state[0][1])
 			self.im2.set_data(self.state[0][2])
 			self.im3.set_data(self.state[0][3])
-			self.im5.set_data(self.state[0][4])
+			#self.im5.set_data(self.state[0][4])
+			self.im5.set_data(self.gp_coordinator.changes_mu_map)
 			# Set the new positions of the agents
 			self.im4[0].set_xdata(self.gp_coordinator.x[:,1])
 			self.im4[0].set_ydata(self.gp_coordinator.x[:,0])
@@ -574,7 +590,11 @@ class MultiagentInformationGathering:
 			for i in range(len(params)):
 				self.text[i].set_text("{:.1f}".format(params[i]))
 			self.impos[0].set_data(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0])
-			
+
+			for i in range(self.number_of_agents):
+				self.agnumtext[i].set_position((self.fleet.agent_positions[i,1], self.fleet.agent_positions[i,0]))
+
+
 
 		self.fig.canvas.draw()
 		self.fig.canvas.flush_events()
@@ -622,15 +642,15 @@ if __name__ == '__main__':
 			fleet_initial_positions=None,
 			seed = 5,
 			movement_length = 2,
-			max_collisions = 20,
+			max_collisions = 2000,
 			ground_truth_type = 'algae_bloom',
 			local = True
 )
 
-	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, forward_direction = np.random.choice([1,3,5]), seed=seed) for _ in range(N)]
-	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, seed=seed) for _ in range(N)]
+	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, forward_direction = np.random.choice([1,2,3,4,5,6,7]), seed=seed) for _ in range(N)]
+	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, seed=seed) for _ in range(N)]
 
-	for _ in range(10):
+	for _ in range(5):
 
 		env.reset()
 
@@ -638,6 +658,7 @@ if __name__ == '__main__':
 		R = []
 		ERROR = []
 		UNCERTAINTY = []
+		R_AGENTS = []
 
 		t = 0
 
@@ -654,6 +675,7 @@ if __name__ == '__main__':
 			env.render()
 
 			R.append(np.sum(list(r.values())))
+			R_AGENTS.append(list(r.values()))
 			ERROR.append(env.get_error())
 			UNCERTAINTY.append(env.gp_coordinator.sigma_map.sum())
 
@@ -661,12 +683,42 @@ if __name__ == '__main__':
 			t+=1
 
 		R = np.array(R)
+		R_AGENTS = np.array(R_AGENTS)
+		R_agents_acc = np.cumsum(R_AGENTS, axis=0)
 		Racc = np.cumsum(R)
 		
 		env.render()
 		plt.show()
 
 		print('Total runtime: ', runtime)
+
+		fig, ax1 = plt.subplots()
+		# Plot the reward and the error in two twinx axes
+		
+		ax1 = plt.gca()
+		ax2 = ax1.twinx()
+		ax1.plot(Racc, 'b-', linewidth=4)
+		# Plot the reward of each agent with different style
+		style = ['-', '--', '-.', ':']
+		for i in range(N):
+			ax1.plot(R_agents_acc[:,i], linestyle=style[i], label='Agent {}'.format(i), color='black')
+		
+		ax1.legend()
+
+
+		ax2.plot(ERROR, 'r-', linewidth=4)
+		ax1.set_xlabel('Time')
+		ax1.set_ylabel('Accumulated Reward', color='b')
+		ax2.set_ylabel('Error', color='r')
+		plt.grid()
+		plt.show()
+
+		# Scatter plot Racc vs ERROR
+		plt.scatter(ERROR, Racc, s=50, c='b', marker="s", label='Reward vs Error')
+		plt.grid()
+		plt.xlabel('Error')
+		plt.ylabel('Accumulated Reward')
+		plt.show()
 
 		
 

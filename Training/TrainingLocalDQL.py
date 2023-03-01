@@ -32,7 +32,7 @@ env = MultiagentInformationGathering(
 )
 
 agent = MultiAgentDuelingDQNAgent(env = env,
-			memory_size = 100_000,
+			memory_size = 1_000_000,
 			batch_size = 64,
 			target_update = 1000,
 			soft_update = True,

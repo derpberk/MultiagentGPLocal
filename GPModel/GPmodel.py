@@ -141,6 +141,8 @@ class LocalGaussianProcessCoordinator:
 
 		# To store the changes of the local GP models #
 		self.changes = np.zeros(len(self.gp_models))
+		self.changes_mu_map = np.zeros_like(self.scenario_map)
+		self.changes_sigma_map = np.zeros_like(self.scenario_map)
 
 	def compute_local_index(self, X: np.ndarray, position:np.ndarray):
 		""" Compute the local positions X_local from the all positions X and the local GP model position """
@@ -195,8 +197,15 @@ class LocalGaussianProcessCoordinator:
 		else:
 			self.x = np.vstack((self.x, x))
 			self.y = np.vstack((self.y, y))
+
+		old_mu_map = self.mu_map.copy()
+		old_sigma_map = self.sigma_map.copy()
 		
 		self.mu_map, self.sigma_map = self.generate_mean_map()
+
+		# Store the changes of the local GP models #
+		self.changes_mu_map = self.mu_map - old_mu_map
+		self.changes_sigma_map = self.sigma_map - old_sigma_map
 										   
 		return self.mu_map, self.sigma_map
 	
@@ -227,6 +236,16 @@ class LocalGaussianProcessCoordinator:
 			np.array([gp_model.change_mu for gp_model in self.gp_models])
 		else:
 			return np.array([self.gp_models[i].change_mu for i in index])
+		
+	def get_changes_map(self):
+		""" Return the mean changes in the surrounding of the position  """
+
+		return self.changes_mu_map, self.changes_sigma_map
+	
+	def get_changes(self):
+		""" Return the changes in the local GP models """
+		
+		return self.changes_mu_map[self.X[:, 0], self.X[:, 1]], self.changes_sigma_map[self.X[:, 0], self.X[:, 1]]
 	
 	def get_kernel_params(self):
 		""" Return the kernel parameters """
