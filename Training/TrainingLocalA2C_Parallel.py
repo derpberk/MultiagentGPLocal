@@ -43,7 +43,8 @@ if __name__ == '__main__':
                                 gamma = 0.99,
                                 lambda_gae = 0.95,
                                 ent_coef = 0.01,
-                                device = 'cuda:0')
+                                device = 'cuda:0',
+                                save_every=500)
                                 
 
     agent.train(10000)

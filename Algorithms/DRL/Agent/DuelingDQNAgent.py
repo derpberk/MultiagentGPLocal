@@ -380,7 +380,7 @@ class MultiAgentDuelingDQNAgent:
 					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
 
 					if mean_reward > record:
-						print(f"New best policy with mean reward of {mean_episodic_reward}")
+						print(f"New best policy with mean reward of {mean_reward}")
 						print("Saving model in " + self.writer.log_dir)
 						record = mean_reward
 						try:
@@ -523,8 +523,6 @@ class MultiAgentDuelingDQNAgent:
 
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
-
-				print(actions)
 
 				if render:
 					self.env.render()
