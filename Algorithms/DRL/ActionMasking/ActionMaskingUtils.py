@@ -23,7 +23,7 @@ class SafeActionMasking:
 
 		if q_values is None:
 			""" Random selection """
-			q_values = np.random.rand(8)
+			q_values = np.random.rand(len(self.angle_set))
 
 		movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])).astype(int) * self.movement_length for angle in self.angle_set])
 		next_positions = self.position + movements
@@ -63,7 +63,52 @@ class NoGoBackMasking:
 		
 		self.previous_action = None
 	
+class ConsensusSafeActionMasking:
+	""" The optimists decide first! """
 
+	def __init__(self, navigation_map, action_space_dim: int, movement_length: float) -> None:
+		
+		self.movement_length = movement_length
+		self.angle_set = np.linspace(0, 2 * np.pi, action_space_dim, endpoint=False)
+		self.position = None
+		self.fleet_map = np.zeros_like(navigation_map)
+
+
+	def query_actions(self, q_values: np.ndarray, positions: np.ndarray):
+
+		# 1) The largest q-value agent decides first
+		# 2) If there are multiple agents with the same q-value, the agent is selected randomly
+		# 3) Then, compute the next position of the agent and update the fleet map
+		# 4) The next agent is selected based on the updated fleet map, etc
+		
+		self.fleet_map = np.ones_like(self.fleet_map)
+		agents_order = np.argsort(q_values.max(axis=1))[::-1]
+		final_actions = np.zeros(q_values.shape[0], dtype=int)
+
+		for agent in agents_order:
+			
+			#Unpack the agent position
+			agent_position = positions[agent]
+			# Compute the impossible actions
+			movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])).astype(int) * self.movement_length for angle in self.angle_set])
+			next_positions = agent_position + movements
+			action_mask = np.array([self.fleet_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)
+			# Censor the impossible actions in the Q-values
+			q_values[agent][action_mask] = -np.inf
+			# Select the action
+			action = np.argmax(q_values[agent])
+
+			# Update the fleet map
+			next_position = next_positions[action]
+			self.fleet_map[int(next_position[0]), int(next_position[1])] = 1
+
+			# Store the action
+			final_actions[agent] = action.copy()
+
+		return {agent: final_actions[agent] for agent in range(q_values.shape[0])}
+
+
+		
 
 		
 		

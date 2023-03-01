@@ -8,7 +8,7 @@ from Algorithms.DRL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, 
 from Algorithms.DRL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork
 import torch.nn.functional as F
 from tqdm import trange
-from Algorithms.DRL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking
+from Algorithms.DRL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking, ConsensusSafeActionMasking
 import time
 import json
 import os
@@ -147,6 +147,7 @@ class MultiAgentDuelingDQNAgent:
 		# Masking utilities #
 		self.safe_masking_module = SafeActionMasking(action_space_dim = action_dim, movement_length = self.env.movement_length)
 		self.nogoback_masking_modules = {i: NoGoBackMasking() for i in range(self.env.number_of_agents)}
+		self.consensus_masking_module = ConsensusSafeActionMasking(self.env.scenario_map, action_space_dim = action_dim, movement_length = self.env.movement_length)
 
 	# TODO: Implement an annealed Learning Rate (see:
 	#  https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau)
@@ -163,27 +164,6 @@ class MultiAgentDuelingDQNAgent:
 			selected_action = np.argmax(q_values)
 
 		return selected_action
-
-	def predict_masked_action(self, state: np.ndarray, agent_id: int, position: np.ndarray,  deterministic: bool = False):
-		""" Select an action masked to avoid collisions and so """
-
-		# Update the state of the safety module #
-		self.safe_masking_module.update_state(position = position, new_navigation_map = self.env.scenario_map)
-
-		if self.epsilon > np.random.rand() and not self.noisy and not deterministic:
-			
-			# Compute randomly the action #
-			q_values, _ = self.safe_masking_module.mask_action(q_values = None)
-			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
-
-		else:
-			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
-			q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
-			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
-		
-		return selected_action
 		
 	def select_action(self, states: dict, deterministic: bool = False) -> dict:
 
@@ -192,8 +172,41 @@ class MultiAgentDuelingDQNAgent:
 		return actions
 
 	def select_masked_action(self, states: dict, positions: np.ndarray, deterministic: bool = False):
+		""" This is the core of the masking module. It selects an action for each agent, masked to avoid collisions and so"""
+		
+		#Initialize some things 
+		actions = dict()
+		q_values_agents = np.zeros((self.env.number_of_agents, self.env.action_space.n))
 
-		actions = {agent_id: self.predict_masked_action(state=state, agent_id=agent_id, position=positions[agent_id], deterministic=deterministic) for agent_id, state in states.items()}
+		for agent_id, state in states.items():
+			""" First, we censor agent-to-env collisions """
+
+			# Update the state of the safety module #
+			self.safe_masking_module.update_state(position = positions[agent_id], new_navigation_map = self.env.scenario_map)
+
+			if self.epsilon > np.random.rand() and not self.noisy and not deterministic:
+				
+				# Compute randomly the q_values but with censor #
+				q_values, _ = self.safe_masking_module.mask_action(q_values = q_values_agents[agent_id])
+				q_values, _ = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+
+
+			else:
+				# Compute the q_values using the Policy but with censor #
+				q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
+				q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
+				q_values, _ = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+				#self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+
+			q_values_agents[agent_id] = q_values
+			
+		# Once we have the q_values for each agent, we compute the consensus q_values and we select the action for each agent #
+		# IMPORTANT NOTE: CONSENSUS MASKING SHOULD BE APPLIED AT THE END. IF THE CONSENSUS IS BROKEN, ANYTHING COULD HAPPEND, EVEN COLLISIONS #
+		actions = self.consensus_masking_module.query_actions(q_values = q_values_agents, positions = positions)
+
+		# Update the last action for each agent #
+		for agent_id, action in actions.items():
+			self.nogoback_masking_modules[agent_id].update_last_action(action)
 
 		return actions
 
