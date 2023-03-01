@@ -95,12 +95,13 @@ class ConsensusSafeActionMasking:
 			action_mask = np.array([self.fleet_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)
 			# Censor the impossible actions in the Q-values
 			q_values[agent][action_mask] = -np.inf
+
 			# Select the action
 			action = np.argmax(q_values[agent])
 
 			# Update the fleet map
 			next_position = next_positions[action]
-			self.fleet_map[int(next_position[0]), int(next_position[1])] = 1
+			self.fleet_map[int(next_position[0]), int(next_position[1])] = 0
 
 			# Store the action
 			final_actions[agent] = action.copy()

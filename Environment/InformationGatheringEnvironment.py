@@ -120,7 +120,6 @@ class DiscreteFleet:
 
 		self.fleet_collisions = 0
 		self.danger_of_isolation = None
-		self.distance_between_agents = None
 
 
 	@staticmethod
@@ -267,7 +266,6 @@ class MultiagentInformationGathering:
 		self.visitable_locations = np.vstack(np.where(self.scenario_map != 0)).T
 		self.number_of_agents = number_of_agents
 		self.distance_budget = distance_budget
-		self.distance_between_agents = distance_between_agents
 		self.fleet_initial_positions = fleet_initial_positions
 		self.movement_length = movement_length
 		self.max_collisions = max_collisions
@@ -401,6 +399,7 @@ class MultiagentInformationGathering:
 
 		# Process action movement only for active agents #
 		collision_mask = self.fleet.move(actions)
+		print(collision_mask)
 		
 		# Collision mask to list 
 		collision_mask = np.array(list(collision_mask.values()))
@@ -516,6 +515,10 @@ class MultiagentInformationGathering:
 		"""
 
 		if self.fleet.fleet_collisions > self.max_collisions or self.steps >= self.max_steps:
+
+			print ("Collisions: ", self.fleet.fleet_collisions)
+			print ("Steps: ", self.steps)
+
 			done = {agent_id: True for agent_id in range(self.number_of_agents)}
 
 
@@ -613,6 +616,8 @@ class MultiagentInformationGathering:
 		
 if __name__ == '__main__':
 
+
+
 	import time
 	from Algorithms.LawnMower import LawnMowerAgent
 	from Algorithms.NRRA import WanderingAgent
@@ -641,17 +646,45 @@ if __name__ == '__main__':
 			fleet_initial_positions=None,
 			seed = 5,
 			movement_length = 2,
-			max_collisions = 2000,
+			max_collisions = 1,
 			ground_truth_type = 'algae_bloom',
 			local = True
-)
+	)
+
+	from Algorithms.DRL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking, ConsensusSafeActionMasking
+
+	
+	safe_masking_module = SafeActionMasking(action_space_dim = 8, movement_length = env.movement_length)
+	nogoback_masking_modules = {i: NoGoBackMasking() for i in range(env.number_of_agents)}
+	consensus_masking_module = ConsensusSafeActionMasking(scenario_map, action_space_dim = 8, movement_length = env.movement_length)
+
+	def select_masked_action(states: dict, positions: np.ndarray):
+		""" This is the core of the masking module. It selects an action for each agent, masked to avoid collisions and so"""
+		
+		actions = dict()
+		q_values_agents = np.random.rand(env.number_of_agents, env.action_space.n)
+		for agent_id, state in states.items():
+			""" First, we censor agent-to-env collisions """
+
+			# Update the state of the safety module #
+			safe_masking_module.update_state(position = positions[agent_id], new_navigation_map = env.scenario_map)
+				
+			# Compute randomly the q_values but with censor #
+			q_values, _ = safe_masking_module.mask_action(q_values = q_values_agents[agent_id])
+			q_values, _ = nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+			q_values_agents[agent_id] = q_values
+			
+		# Once we have the q_values for each agent, we compute actions #
+		actions = consensus_masking_module.query_actions(q_values = q_values_agents, positions = positions)
+		
+		return actions
 
 	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, forward_direction = np.random.choice([1,2,3,4,5,6,7]), seed=seed) for _ in range(N)]
 	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, seed=seed) for _ in range(N)]
 
 	for _ in range(5):
 
-		env.reset()
+		states = env.reset()
 
 		done = {i:False for i in range(N)}
 		R = []
@@ -664,23 +697,25 @@ if __name__ == '__main__':
 		runtime = 0
 		while not any(list(done.values())):
 			
-			action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
+			#action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
 
+			action = select_masked_action(states = states, positions = env.fleet.get_positions())
 			t0 = time.time()
 			s, r, done, _ = env.step(action)
 			t1 = time.time()
 
 			runtime += t1-t0
-			env.render()
+			#env.render()
 
 			R.append(np.sum(list(r.values())))
 			R_AGENTS.append(list(r.values()))
 			ERROR.append(env.get_error())
 			UNCERTAINTY.append(env.gp_coordinator.sigma_map.sum())
 
-			print(r)
+			#print(r)
 			t+=1
 
+		"""
 		R = np.array(R)
 		R_AGENTS = np.array(R_AGENTS)
 		R_agents_acc = np.cumsum(R_AGENTS, axis=0)
@@ -719,6 +754,8 @@ if __name__ == '__main__':
 		plt.ylabel('Accumulated Reward')
 		plt.show()
 
-		
+		"""
+
+
 
 
