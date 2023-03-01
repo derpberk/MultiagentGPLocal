@@ -110,7 +110,6 @@ class LawnMowerAgent:
             self.initial_action = self.perpendicular_action(self.initial_action)
             self.state = 'FORWARD'
         
-        print(self.state)
         return self.state_to_action(self.state)
     
     def state_to_action(self, state):

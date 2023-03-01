@@ -3,8 +3,8 @@ from scipy.ndimage import gaussian_filter, convolve
 import matplotlib.colors
 import matplotlib.pyplot as plt
 
-algae_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["dodgerblue","darkcyan", "darkgreen", "forestgreen"])
-background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["sienna","sienna"])
+algae_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["dodgerblue","darkcyan", "forestgreen", "darkgreen"])
+background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["#69473e","dodgerblue"])
 fuelspill_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["dodgerblue", "olive", "saddlebrown", "indigo"])
 
 
