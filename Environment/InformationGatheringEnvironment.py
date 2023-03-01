@@ -39,7 +39,7 @@ class DiscreteVehicle:
 		""" Move a vehicle in the direction of the action. If valid is False, the action is not performed. """
 
 		angle = self.angle_set[action]
-		movement = np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])).astype(int)
+		movement = (np.round(np.array([np.cos(angle), np.sin(angle)])) * self.movement_length).astype(int)
 		next_position = self.position + movement
 		self.distance += np.linalg.norm(self.position - next_position)
 
@@ -76,7 +76,7 @@ class DiscreteVehicle:
 		""" Return True if the action leads to a collision """
 
 		angle = self.angle_set[action]
-		movement = np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])).astype(int)
+		movement = (np.round(np.array([np.cos(angle), np.sin(angle)])) * self.movement_length).astype(int)
 		next_position = self.position + movement
 
 		return self.check_collision(next_position)
@@ -134,7 +134,7 @@ class DiscreteFleet:
 		for idx, veh_action in veh_actions.items():
 
 			angle = self.vehicles[idx].angle_set[veh_action]
-			movement = np.round(np.array([self.vehicles[idx].movement_length * np.cos(angle), self.vehicles[idx].movement_length * np.sin(angle)])).astype(int)
+			movement = (np.round(np.array([np.cos(angle), np.sin(angle)])) * self.vehicles[idx].movement_length).astype(int)
 			new_positions.append(list(self.vehicles[idx].position + movement))
 
 		_, inverse_index, counts = np.unique(np.asarray(new_positions), return_inverse=True, return_counts=True, axis=0)
@@ -399,7 +399,6 @@ class MultiagentInformationGathering:
 
 		# Process action movement only for active agents #
 		collision_mask = self.fleet.move(actions)
-		print(collision_mask)
 		
 		# Collision mask to list 
 		collision_mask = np.array(list(collision_mask.values()))
@@ -515,9 +514,6 @@ class MultiagentInformationGathering:
 		"""
 
 		if self.fleet.fleet_collisions > self.max_collisions or self.steps >= self.max_steps:
-
-			print ("Collisions: ", self.fleet.fleet_collisions)
-			print ("Steps: ", self.steps)
 
 			done = {agent_id: True for agent_id in range(self.number_of_agents)}
 

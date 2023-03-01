@@ -25,7 +25,7 @@ class SafeActionMasking:
 			""" Random selection """
 			q_values = np.random.rand(len(self.angle_set))
 
-		movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])).astype(int) * self.movement_length for angle in self.angle_set])
+		movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])* self.movement_length).astype(int) for angle in self.angle_set])
 		next_positions = self.position + movements
 
 		action_mask = np.array([self.navigation_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)

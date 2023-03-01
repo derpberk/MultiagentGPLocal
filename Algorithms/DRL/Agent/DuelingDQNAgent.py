@@ -187,16 +187,14 @@ class MultiAgentDuelingDQNAgent:
 			if self.epsilon > np.random.rand() and not self.noisy and not deterministic:
 				
 				# Compute randomly the q_values but with censor #
-				q_values, _ = self.safe_masking_module.mask_action(q_values = q_values_agents[agent_id])
+				q_values, _ = self.safe_masking_module.mask_action(q_values = None)
 				q_values, _ = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-
 
 			else:
 				# Compute the q_values using the Policy but with censor #
 				q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
 				q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
 				q_values, _ = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-				#self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
 
 			q_values_agents[agent_id] = q_values
 			
@@ -296,6 +294,7 @@ class MultiAgentDuelingDQNAgent:
 
 			done = {i:False for i in range(self.env.number_of_agents)}
 			state = self.env.reset()
+			self.env.render()
 			score = 0
 			length = 0
 			losses = []
@@ -331,6 +330,7 @@ class MultiAgentDuelingDQNAgent:
 
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
+				self.env.render()
 
 				for agent_id in next_state.keys():
 
