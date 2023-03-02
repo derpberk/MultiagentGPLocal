@@ -666,7 +666,7 @@ if __name__ == '__main__':
 			safe_masking_module.update_state(position = positions[agent_id], new_navigation_map = env.scenario_map)
 				
 			# Compute randomly the q_values but with censor #
-			q_values, _ = safe_masking_module.mask_action(q_values = q_values_agents[agent_id])
+			q_values, _ = safe_masking_module.mask_action(q_values = None)
 			q_values, _ = nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
 			q_values_agents[agent_id] = q_values
 			
@@ -701,7 +701,7 @@ if __name__ == '__main__':
 			t1 = time.time()
 
 			runtime += t1-t0
-			#env.render()
+			env.render()
 
 			R.append(np.sum(list(r.values())))
 			R_AGENTS.append(list(r.values()))
