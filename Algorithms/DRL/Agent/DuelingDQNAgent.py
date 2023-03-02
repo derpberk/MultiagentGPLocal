@@ -294,7 +294,6 @@ class MultiAgentDuelingDQNAgent:
 
 			done = {i:False for i in range(self.env.number_of_agents)}
 			state = self.env.reset()
-			self.env.render()
 			score = 0
 			length = 0
 			losses = []
@@ -330,7 +329,6 @@ class MultiAgentDuelingDQNAgent:
 
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
-				self.env.render()
 
 				for agent_id in next_state.keys():
 
