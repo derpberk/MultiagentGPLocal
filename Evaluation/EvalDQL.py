@@ -5,6 +5,8 @@ from Algorithms.DRL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 
 scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
+
+
 N = 3
 D = 7
 # Generate initial positions with squares of size 3 x 3 around positions
@@ -25,34 +27,19 @@ env = MultiagentInformationGathering(
 			seed = 0,
 			movement_length = 2,
 			max_collisions = 5,
-			ground_truth_type = 'algae_bloom',
+			ground_truth_type = 'shekel',
 			local = True
 )
+
 agent = MultiAgentDuelingDQNAgent(env = env,
-			memory_size = 10,
+			memory_size = 500_000,
 			batch_size = 64,
 			target_update = 1000,
-			soft_update = True,
-			tau = 0.001,
-			epsilon_values = [1.0, 0.05],
-			epsilon_interval = [0.0, 0.5],
-			learning_starts = 100,
-			gamma = 0.99,
-			lr = 1e-4,
-			# NN parameters
-			number_of_features = 512,
-			logdir='runs/DuelingDQN',
-			log_name="DQL",
-			save_every=None,
-			train_every=15,
-			masked_actions= True,
-			device='cuda:0',
-			seed = 0,
-			eval_every = 200,
-			eval_episodes = 20)
+            number_of_features=512,
+            masked_actions=True,
+            device='cuda:0')
 
-
-agent.load_model('runs/DuelingDQN/BestPolicy.pth')
+agent.load_model('Evaluation/FinalPolicy_wqp.pth')
 
 res = agent.evaluate_env(50, render = True)
 
