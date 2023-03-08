@@ -4,6 +4,7 @@ from torch import optim
 import torch.nn.functional as F
 from Algorithms.DRL.Networks.FeatureExtractors import FeatureExtractor
 import numpy as np
+from Algorithms.DRL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking, ConsensusSafeActionDistributionMasking
 
 class A2C(nn.Module):
 	"""
@@ -27,14 +28,14 @@ class A2C(nn.Module):
 		device: torch.device,
 		critic_lr: float,
 		actor_lr: float,
-		n_envs: int,
 		n_agents: int,
+		conditioned_actions = False,
+		environment_model_info = None
 	) -> None:
 		
 		"""Initializes the actor and critic networks and their respective optimizers."""
 		super().__init__()
 		self.device = device
-		self.n_envs = n_envs
 		self.n_agents = n_agents
 
 		self.critic = nn.Sequential(
@@ -53,13 +54,17 @@ class A2C(nn.Module):
 			nn.Linear(256, 128),
 			nn.ReLU(),
 			nn.Linear(128, n_actions),
-			nn.Softmax(dim=1) # estimate action logits (will be fed into a softmax later)
 		).to(self.device)
 
 
 		# define optimizers for actor and critic
 		self.critic_optim = optim.RMSprop(self.critic.parameters(), lr=critic_lr)
 		self.actor_optim = optim.RMSprop(self.actor.parameters(), lr=actor_lr)
+
+		self.conditioned_actions = conditioned_actions
+		if self.conditioned_actions:
+			self.environment_model_info = environment_model_info
+			self.consensus_module = ConsensusSafeActionDistributionMasking(self.environment_model_info['scenario_map'], action_space_dim = n_actions, movement_length = self.environment_model_info['movement_length'])
 
 
 	def forward(self, x: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
@@ -78,7 +83,7 @@ class A2C(nn.Module):
 		action_logits_vec = self.actor(x)  # shape: [n_envs, n_actions]
 		return (state_values, action_logits_vec)
 
-	def select_action(self, x: np.ndarray, action_mask = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+	def select_action(self, x, action_mask = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 		"""
 		Returns a tuple of the chosen actions and the log-probs of those actions.
 
@@ -92,16 +97,34 @@ class A2C(nn.Module):
 		"""
 
 		state_values, action_logits = self.forward(x)
+		action_probabilites = F.softmax(action_logits, dim=1)
 		if action_mask is not None:
-			action_logits = (action_logits * action_mask).clip(min=1e-10)
+			action_probabilites = (action_probabilites * action_mask).clip(min=1e-10)
 
 
-		action_pd = torch.distributions.Categorical(probs=action_logits)  # implicitly uses softmax
+		action_pd = torch.distributions.Categorical(probs=action_probabilites)  # implicitly uses softmax
 		actions = action_pd.sample()
 		action_log_probs = action_pd.log_prob(actions)
 		entropy = action_pd.entropy()
 
 		return (actions, action_log_probs, state_values, entropy)
+	
+	def select_consensual_action(self, x, action_mask: np.ndarray, scenario_map: np.ndarray, positions: np.ndarray, deterministic = False) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+		""" Process the action mask to be used by the consensus module """
+
+		# Forward the observations through the network
+		state_values, action_logits = self.forward(x)
+		# Process the action mask
+		if action_mask is not None:
+			action_logits[action_mask] = -torch.finfo(torch.float).max
+
+		# Get the consensus action mask
+		actions, action_log_probs, entropy = self.consensus_module.query_actions_from_logits(action_logits, positions, device=self.device, deterministic=deterministic)
+
+		return (actions, action_log_probs, state_values, entropy)
+
+
 
 	def get_losses(
 		self,
@@ -137,7 +160,7 @@ class A2C(nn.Module):
 
 		T = len(rewards)
 
-		advantages = torch.zeros(T, self.n_envs * self.n_agents, device=device)
+		advantages = torch.zeros(T, self.n_agents, device=device)
 
 		# compute the advantages using GAE
 		gae = 0.0
@@ -150,7 +173,7 @@ class A2C(nn.Module):
 		critic_loss = advantages.pow(2).mean()
 
 		# give a bonus for higher entropy to encourage exploration
-		actor_loss = (-(advantages.detach() * action_log_probs).mean() - ent_coef * entropy.mean())
+		actor_loss = (-(advantages.detach() * action_log_probs).mean() - ent_coef * entropy.sum())
 
 		return (critic_loss, actor_loss)
 
@@ -169,4 +192,3 @@ class A2C(nn.Module):
 		self.actor_optim.zero_grad()
 		actor_loss.backward()
 		self.actor_optim.step()
-

@@ -24,10 +24,10 @@ env = MultiagentInformationGathering(
 			distance_between_agents = 1,
 			fleet_initial_zones=fleet_initial_zones,
 			fleet_initial_positions=None,
-			seed = 0,
+			seed = 42,
 			movement_length = 2,
 			max_collisions = 5,
-			ground_truth_type = 'shekel',
+			ground_truth_type = 'algae_bloom',
 			local = True
 )
 
@@ -39,7 +39,7 @@ agent = MultiAgentDuelingDQNAgent(env = env,
             masked_actions=True,
             device='cuda:0')
 
-agent.load_model('Evaluation/FinalPolicy_wqp.pth')
+agent.load_model('Evaluation/FinalPolicy_algae.pth')
 
 res = agent.evaluate_env(50, render = True)
 

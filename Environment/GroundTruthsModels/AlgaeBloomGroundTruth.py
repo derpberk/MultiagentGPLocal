@@ -25,8 +25,6 @@ class algae_bloom:
         self.current_field_fn = np.vectorize(self.current_field, signature="(n) -> (n)")
         self.apply_bounds_fn = np.vectorize(self.apply_bounds, signature="(n) -> (n)")
 
-        #self.contour_currents_x = convolve(self.grid, np.array([[0,0,0,0,0],[0,0,0,0,0],[0,0,1,-1,-2],[0,0,0,0,0],[0,0,0,0,0]]), mode='constant')
-        #self.contour_currents_y = convolve(self.grid, np.array([[0,0,0,0,0],[0,0,0,0,0],[0,0,1,0,0],[0,0,-1,0,0],[0,0,-2,0,0]]), mode='constant')
         self.contour_currents_x = convolve(self.grid, np.array([[0,0,0],[0,1,-1],[0,0,0]]), mode='constant')*2
         self.contour_currents_y = convolve(self.grid, np.array([[0,0,0],[0,1,0],[0,-1,0]]), mode='constant')*2
 

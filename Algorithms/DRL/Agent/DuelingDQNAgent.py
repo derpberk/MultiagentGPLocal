@@ -540,6 +540,7 @@ class MultiAgentDuelingDQNAgent:
 
 				if render:
 					self.env.render()
+					time.sleep(0.25)
 
 				# Update the state #
 				state = next_state

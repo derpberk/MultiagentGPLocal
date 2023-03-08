@@ -61,7 +61,7 @@ class LawnMowerAgent:
 
         elif self.state == 'TURN':
 
-            if self.turn_count == 2 or OBS:
+            if self.turn_count == 1 or OBS:
                 self.state = 'REVERSE'
                 self.turn_count = 0
             else:
@@ -94,7 +94,7 @@ class LawnMowerAgent:
 
         elif self.state == 'TURN2':
                 
-                if self.turn_count == 2 or OBS:
+                if self.turn_count == 1 or OBS:
                     self.state = 'FORWARD'
                     self.turn_count = 0
                 else:

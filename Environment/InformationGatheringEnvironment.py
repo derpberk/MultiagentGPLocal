@@ -3,6 +3,7 @@ sys.path.append('.')
 import numpy as np
 from Environment.GroundTruthsModels.AlgaeBloomGroundTruth import algae_bloom, algae_colormap
 from Environment.GroundTruthsModels.ShekelGroundTruth import shekel
+from Environment.GroundTruthsModels.NewFireFront import WildFiresSimulator
 from GPModel.GPmodel import LocalGaussianProcessCoordinator, GlobalGaussianProcessCoordinator
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, WhiteKernel as W
 import gym
@@ -235,7 +236,8 @@ class MultiagentInformationGathering:
 				 ground_truth_type: str = 'algae_blooms',
 				 frame_stacking = 0,
 				 state_index_stacking = (0,1,2,3,4),
-				 local = True
+				 local = True,
+				 reward_type = 'changes_mu',
 				 ):
 		
 		""" 
@@ -271,6 +273,7 @@ class MultiagentInformationGathering:
 		self.max_collisions = max_collisions
 		self.ground_truth_type = ground_truth_type
 		self.fleet_initial_zones = fleet_initial_zones
+		self.reward_type = reward_type
 
 		self.max_steps = self.distance_budget // self.movement_length
 		
@@ -297,6 +300,10 @@ class MultiagentInformationGathering:
 			self.gt = shekel(self.scenario_map, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
 		elif ground_truth_type == 'algae_bloom':
 			self.gt = algae_bloom(self.scenario_map, seed=self.seed)
+		elif ground_truth_type == 'wildfires':
+			self.gt = WildFiresSimulator(self.scenario_map, seed=self.seed)
+
+
 		else:
 			raise NotImplementedError("This Benchmark is not implemented. Choose one that is.")
 
@@ -461,7 +468,14 @@ class MultiagentInformationGathering:
 
 
 		# 1) obtain the changes in the surrogate model MU
-		changes_values, _ = self.gp_coordinator.get_changes()
+		changes_mu_values, changes_sigma_values = self.gp_coordinator.get_changes()
+
+		if self.reward_type == 'changes_mu':
+			changes_values = changes_mu_values
+		elif self.reward_type == 'changes_sigma':
+			changes_values = changes_sigma_values
+		else:
+			raise ValueError('Invalid reward type')
 		
 		# 2) Compute the surroundings for every agent
 		redundancy = np.zeros(self.gp_coordinator.X.shape[0])
@@ -535,7 +549,7 @@ class MultiagentInformationGathering:
 			unknown[1::2, ::2] = 0.5
 			unknown[::2, 1::2] = 0.5
 			self.axs[1].imshow(unknown, cmap='gray', vmin=0, vmax=1)
-			self.im0 = self.axs[1].imshow(self.state[0][0], cmap = algae_colormap, vmin=0, vmax=1)
+			self.im0 = self.axs[1].imshow(self.state[0][0], cmap = 'viridis', vmin=0, vmax=1)
 			self.axs[1].set_title(r'GP $\mu$ ')
 			# Add the params to the plot
 			params = self.gp_coordinator.get_kernel_params()
@@ -558,7 +572,7 @@ class MultiagentInformationGathering:
 			self.im5 = self.axs[5].imshow(self.state[0][4], cmap = 'gray', vmin=-1, vmax=1)
 			self.axs[5].set_title(r'Map')
 			# Print the gts
-			self.axs[0].imshow(self.scenario_map * self.gt.read(), cmap = algae_colormap, vmin=0, vmax=1, interpolation='bilinear')
+			self.axs[0].imshow(self.scenario_map * self.gt.read(), cmap = 'viridis', vmin=0, vmax=1, interpolation='bilinear')
 			try:
 				self.axs[0].plot(self.gp_coordinator.gp_positions[:,1], self.gp_coordinator.gp_positions[:,0], 'k.', markersize=5)
 			except:
@@ -567,12 +581,16 @@ class MultiagentInformationGathering:
 			self.axs[0].set_title(r'Ground Truth')
 			self.im4 = self.axs[0].plot(self.gp_coordinator.x[:,1], self.gp_coordinator.x[:,0], 'gx', markersize=5)
 			# Scatterplot with the position of the agents. Every agent position is in a different color
-			colors = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown', 'gray', 'olive']
+			colors = ['red', 'blue', 'orange', 'yellow', 'green', 'purple', 'pink', 'brown', 'gray', 'olive']
 			self.impos = self.axs[5].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, self.number_of_agents), markersize=5)
 			# Add text with the agent id
 			self.agnumtext = []
 			for i in range(self.number_of_agents):
 				self.agnumtext.append(self.axs[5].text(self.fleet.agent_positions[i,1], self.fleet.agent_positions[i,0], str(i), color='black', fontsize=8, horizontalalignment='center', verticalalignment='center'))
+
+			self.linepaths = []
+			for i in range(self.number_of_agents):
+				self.linepaths.append(self.axs[5].plot(self.fleet.vehicles[i].waypoints[:,1], self.fleet.vehicles[i].waypoints[:,1], '-o', markersize = 3, color=colors[i], linewidth=2, alpha=0.5))
 
 		else:
 			
@@ -580,8 +598,7 @@ class MultiagentInformationGathering:
 			self.im1.set_data(self.state[0][1])
 			self.im2.set_data(self.state[0][2])
 			self.im3.set_data(self.state[0][3])
-			#self.im5.set_data(self.state[0][4])
-			self.im5.set_data(self.gp_coordinator.changes_mu_map)
+			self.im5.set_data(self.state[0][4])
 			# Set the new positions of the agents
 			self.im4[0].set_xdata(self.gp_coordinator.x[:,1])
 			self.im4[0].set_ydata(self.gp_coordinator.x[:,0])
@@ -592,6 +609,7 @@ class MultiagentInformationGathering:
 
 			for i in range(self.number_of_agents):
 				self.agnumtext[i].set_position((self.fleet.agent_positions[i,1], self.fleet.agent_positions[i,0]))
+				self.linepaths[i][0].set_data(self.fleet.vehicles[i].waypoints[:,1], self.fleet.vehicles[i].waypoints[:,0])
 
 
 
@@ -626,25 +644,35 @@ if __name__ == '__main__':
 	N = 3
 	D = 7
 	# Generate initial positions with squares of size 3 x 3 around positions
-	center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
+	#center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
 	# 9 positions in the sorrounding of the center
-	area_initial_zones = np.array([[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]])
+	#area_initial_zones = np.array([[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]])
 	# Generate the initial positions with the sum of the center and the area
-	fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
+	#fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
+
+	scenario_map = np.ones((35,35))
+	scenario_map[0:2,:] = 0
+	scenario_map[-2:,:] = 0
+	scenario_map[:,0:2] = 0
+	scenario_map[:,-2:] = 0
+
+	center_initial_zones = np.array([[5,35-5], [5, 35-15], [5,35-25]])
+
 	env = MultiagentInformationGathering(
-			scenario_map = scenario_map,
+			scenario_map = scenario_map, #scenario_map,
 			number_of_agents = N,
 			distance_between_locals = D,
 			radius_of_locals = np.sqrt(2) * D / 2,
-			distance_budget = 100,
+			distance_budget = 200,
 			distance_between_agents = 1,
-			fleet_initial_zones=fleet_initial_zones,
-			fleet_initial_positions=None,
+			fleet_initial_zones=None, #fleet_initial_zones,
+			fleet_initial_positions=center_initial_zones,
 			seed = 5,
 			movement_length = 2,
 			max_collisions = 1,
-			ground_truth_type = 'algae_bloom',
-			local = True
+			ground_truth_type = 'wildfires',
+			local = True,
+			reward_type='changes_sigma',
 	)
 
 	from Algorithms.DRL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking, ConsensusSafeActionMasking
@@ -654,11 +682,10 @@ if __name__ == '__main__':
 	nogoback_masking_modules = {i: NoGoBackMasking() for i in range(env.number_of_agents)}
 	consensus_masking_module = ConsensusSafeActionMasking(scenario_map, action_space_dim = 8, movement_length = env.movement_length)
 
-	def select_masked_action(states: dict, positions: np.ndarray):
+	def select_masked_action(states: dict, positions: np.ndarray, q_values_agents: np.ndarray):
 		""" This is the core of the masking module. It selects an action for each agent, masked to avoid collisions and so"""
 		
 		actions = dict()
-		q_values_agents = np.random.rand(env.number_of_agents, env.action_space.n)
 		for agent_id, state in states.items():
 			""" First, we censor agent-to-env collisions """
 
@@ -666,7 +693,7 @@ if __name__ == '__main__':
 			safe_masking_module.update_state(position = positions[agent_id], new_navigation_map = env.scenario_map)
 				
 			# Compute randomly the q_values but with censor #
-			q_values, _ = safe_masking_module.mask_action(q_values = None)
+			q_values, _ = safe_masking_module.mask_action(q_values = q_values_agents[agent_id])
 			q_values, _ = nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
 			q_values_agents[agent_id] = q_values
 			
@@ -675,12 +702,17 @@ if __name__ == '__main__':
 		
 		return actions
 
-	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, forward_direction = np.random.choice([1,2,3,4,5,6,7]), seed=seed) for _ in range(N)]
+	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, forward_direction = 0, seed=seed) for _ in range(N)]
 	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, seed=seed) for _ in range(N)]
 
 	for _ in range(5):
 
 		states = env.reset()
+		env.render()
+
+		for i in range(N):
+			lawn_mower_agents[i].reset(0)
+
 
 		done = {i:False for i in range(N)}
 		R = []
@@ -693,9 +725,13 @@ if __name__ == '__main__':
 		runtime = 0
 		while not any(list(done.values())):
 			
-			#action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
+			action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
 
-			action = select_masked_action(states = states, positions = env.fleet.get_positions())
+			q_values = np.zeros((N, env.action_space.n)) + 0.5
+			for i, a in action.items():
+				q_values[i, a] = 1
+
+			#action = select_masked_action(states = states, positions = env.fleet.get_positions(), q_values_agents = q_values)
 			t0 = time.time()
 			s, r, done, _ = env.step(action)
 			t1 = time.time()
@@ -708,10 +744,10 @@ if __name__ == '__main__':
 			ERROR.append(env.get_error())
 			UNCERTAINTY.append(env.gp_coordinator.sigma_map.sum())
 
-			#print(r)
+			print(r)
 			t+=1
 
-		"""
+
 		R = np.array(R)
 		R_AGENTS = np.array(R_AGENTS)
 		R_agents_acc = np.cumsum(R_AGENTS, axis=0)
@@ -750,7 +786,7 @@ if __name__ == '__main__':
 		plt.ylabel('Accumulated Reward')
 		plt.show()
 
-		"""
+
 
 
 
