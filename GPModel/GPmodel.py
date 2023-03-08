@@ -204,8 +204,8 @@ class LocalGaussianProcessCoordinator:
 		self.mu_map, self.sigma_map = self.generate_mean_map()
 
 		# Store the changes of the local GP models #
-		self.changes_mu_map = (self.mu_map - old_mu_map) / (old_mu_map + 1e-6)
-		self.changes_sigma_map = (self.sigma_map - old_sigma_map) / (old_sigma_map + 1e-6)
+		self.changes_mu_map = (self.mu_map - old_mu_map) / (1 + old_mu_map)
+		self.changes_sigma_map = (self.sigma_map - old_sigma_map) / (1 + old_sigma_map)
 										   
 		return self.mu_map, self.sigma_map
 	
