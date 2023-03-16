@@ -1,5 +1,6 @@
 import sys
 sys.path.append('.')
+
 from Environment.InformationGatheringEnvironment import MultiagentInformationGathering
 from Algorithms.DRL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
@@ -10,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--N', type=int, required=True)
 parser.add_argument('--R', type=str, required=True)
 parser.add_argument('--GT', type=str, required=True)
+parser.add_argument('--GPU', type=int, required=True)
 args = parser.parse_args()
 
 scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
@@ -18,6 +20,7 @@ scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
 N = args.N
 reward = args.R
 GT = args.GT
+devn = args.GPU
 
 print(N,reward,GT)
 
@@ -63,7 +66,7 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 			save_every=1000,
 			train_every=10,
 			masked_actions= True,
-			device='cuda:1',
+			device=f'cuda:{devn}',
 			seed = 0,
 			eval_every = 200,
 			eval_episodes = 50,)
