@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import KNeighborsClassifier
 from scipy.stats import norm
 from Environment.InformationGatheringEnvironment import MultiagentInformationGathering
-
+from tqdm import trange
+from Evaluation.EvaluationUtils import find_peaks, plot_path, plot_trajectory
+import pandas as pd
 
 
 
@@ -47,7 +49,7 @@ class ExpectedImprovementMultiAgent:
 			new_maps = self.nearest_neighbour_map_generation(positions)
 
 			# 3) Compute the expected improvement for each agent
-			ei_map = self.expected_improvement(mu_map, sigma_map, xi=0.1, y_opt=0.0)
+			ei_map = self.expected_improvement(mu_map, sigma_map, xi=0.3, y_opt=0.0)
 
 			# 4) Update the objective of every agent
 			for agent_id in range(self.number_of_agents):
@@ -156,6 +158,121 @@ class ExpectedImprovementMultiAgent:
 
 		return resulting_maps * self.navigation_map
 
+
+def run_evaluation(path: str, agent, env, algorithm: str, runs: int, n_agents: int, ground_truth_type: str, render = False):
+
+	metrics = {'Algorithm': [], 
+			'Run': [], 
+			'Step': [],
+			'N_agents': [],
+			'Ground Truth': [],
+			'Mean distance': [],
+			'Accumulated Reward': [],
+			'$\Delta \mu$': [], 
+			'$\Delta \sigma$': [], 
+			'Total uncertainty': [],
+			'Error $\mu$': [], 
+			'Max. Error in $\mu_{max}$': [], 
+			'Mean Error in $\mu_{max}$': []}
+	
+	for i in range(n_agents): 
+		metrics['Agent {} X '.format(i)] = []
+		metrics['Agent {} Y'.format(i)] = []
+		metrics['Agent {} reward'.format(i)] = []
+
+	for run in trange(runs):
+		#Increment the step counter #
+		step = 0
+		
+		# Reset the environment #
+		state = env.reset()
+
+		if render:
+			env.render()
+
+		# Reset dones #
+		done = {agent_id: False for agent_id in range(env.number_of_agents)}
+
+		# Update the metrics #
+		metrics['Algorithm'].append(algorithm)
+		#metrics['Reward type'].append(reward_type)
+		metrics['Run'].append(run)
+		metrics['Step'].append(step)
+		metrics['N_agents'].append(n_agents)
+		metrics['Ground Truth'].append(ground_truth_type)
+		metrics['Mean distance'].append(0)
+		U0 = env.gp_coordinator.sigma_map.sum()
+		metrics['Total uncertainty'].append(env.gp_coordinator.sigma_map.sum() / U0)
+		metrics['$\Delta \mu$'].append(0)
+		metrics['$\Delta \sigma$'].append(0)
+		metrics['Error $\mu$'].append(env.get_error())
+		metrics['Max. Error in $\mu_{max}$'].append(1)
+		metrics['Mean Error in $\mu_{max}$'].append(1)
+		peaks, vals = find_peaks(env.gt.read())
+		positions = env.fleet.get_positions()
+		for i in range(n_agents): 
+			metrics['Agent {} X '.format(i)].append(positions[i,0])
+			metrics['Agent {} Y'.format(i)].append(positions[i,1])
+			metrics['Agent {} reward'.format(i)].append(0)
+
+		metrics['Accumulated Reward'].append(0)
+		
+		acc_reward = 0
+
+		while not all(done.values()):
+
+			step += 1
+
+			actions = agent.get_actions(env.fleet.get_positions(), env.gp_coordinator.mu_map, env.gp_coordinator.sigma_map)
+
+			# Process the agent step #
+			next_state, reward, done, _ = env.step(actions)
+
+			if render:
+				env.render()
+
+			acc_reward += sum(reward.values())
+
+			# Datos de estado
+			metrics['Algorithm'].append(algorithm)
+			#metrics['Reward type'].append(reward_type)
+			metrics['Run'].append(run)
+			metrics['Step'].append(step)
+			metrics['N_agents'].append(n_agents)
+			metrics['Ground Truth'].append(ground_truth_type)
+			metrics['Mean distance'].append(env.fleet.get_distances().mean())
+
+			# Datos de cambios en la incertidumbre y el mu
+			changes_mu, changes_sigma = env.gp_coordinator.get_changes()
+			metrics['$\Delta \mu$'].append(changes_mu.sum())
+			metrics['$\Delta \sigma$'].append(changes_sigma.sum())
+			# Incertidumbre total aka entropía
+			metrics['Total uncertainty'].append(env.gp_coordinator.sigma_map.sum() / U0)
+			# Error en el mu
+			metrics['Error $\mu$'].append(env.get_error())
+			# Error en el mu max
+			peaks, vals = find_peaks(env.gt.read())
+			estimated_vals = env.gp_coordinator.mu_map[peaks[:,0], peaks[:,1]]
+			error = np.abs(estimated_vals - vals)
+			metrics['Max. Error in $\mu_{max}$'].append(error.max())
+			metrics['Mean Error in $\mu_{max}$'].append(error.mean())
+
+			positions = env.fleet.get_positions()
+			for i in range(n_agents): 
+				metrics['Agent {} X '.format(i)].append(positions[i,0])
+				metrics['Agent {} Y'.format(i)].append(positions[i,1])
+				metrics['Agent {} reward'.format(i)].append(0)
+
+			metrics['Accumulated Reward'].append(acc_reward)
+
+		if render:
+			plt.show()
+
+
+	df = pd.DataFrame(metrics)
+
+	df.to_csv(path + '/{}_{}_{}.csv'.format(algorithm, ground_truth_type, n_agents))
+
 		
 
 		
@@ -171,7 +288,7 @@ if __name__ == '__main__':
 	seed = 1564
 	np.random.seed(seed)
 	N = 3
-	D = 25
+	D = 7
 	# Generate initial positions with squares of size 3 x 3 around positions
 	center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
 	# 9 positions in the sorrounding of the center
@@ -182,7 +299,7 @@ if __name__ == '__main__':
 			scenario_map = scenario_map,
 			number_of_agents = N,
 			distance_between_locals = D,
-			radius_of_locals = 1000,
+			radius_of_locals = np.sqrt(2) * D / 2 if D < 25 else 1000,
 			distance_budget = 100,
 			distance_between_agents = 1,
 			fleet_initial_zones=fleet_initial_zones,
@@ -190,18 +307,15 @@ if __name__ == '__main__':
 			seed = 5,
 			movement_length = 2,
 			max_collisions = 5,
-			ground_truth_type = 'algae_bloom',
+			ground_truth_type = 'shekel',
 			local = True
 	)
 
 	# Create the agents
 	agent = ExpectedImprovementMultiAgent(navigation_map = scenario_map, number_of_agents= 3, max_movement_distance = 3, tolerance=3, travel_distance=10000)
 
-
-	states = env.reset()
-
+	# Initialize the metrics 
 	done = {i:False for i in range(N)}
-
 	t = 0
 
 	runtime = 0
