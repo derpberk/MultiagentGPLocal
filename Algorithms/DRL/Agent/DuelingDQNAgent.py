@@ -424,7 +424,8 @@ class MultiAgentDuelingDQNAgent:
 			done_mask = 1 - done
 
 			with torch.no_grad():
-				next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
+				next_q_value = self.dqn_target(next_state).gather(1, self.dqn(next_state).argmax(dim=1, keepdim=True))
+				#next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
 				target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
 
 			# calculate element-wise dqn loss
