@@ -98,7 +98,8 @@ class DiscreteFleet:
 				 n_actions,
 				 fleet_initial_positions,
 				 movement_length,
-				 navigation_map):
+				 navigation_map,
+				 collisions_within_flag = True):
 
 		""" Coordinator of the movements of the fleet. Coordinates the common model, the distance between drones, etc. """
 		np.random.seed(0)
@@ -114,6 +115,7 @@ class DiscreteFleet:
 										 navigation_map=navigation_map) for k in range(self.number_of_vehicles)]
 
 		self.agent_positions = np.asarray([veh.position for veh in self.vehicles])
+		self.collisions_within_flag = collisions_within_flag
 
 		# Reset model variables 
 		self.measured_values = None
@@ -148,7 +150,7 @@ class DiscreteFleet:
 	def move(self, fleet_actions):
 
 		# Check if there are collisions between vehicles #
-		self_colliding_mask = self.check_fleet_collision_within(fleet_actions)
+		self_colliding_mask = self.check_fleet_collision_within(fleet_actions) if self.collisions_within_flag else np.ones(self.number_of_vehicles, dtype=bool)
 		# Process the fleet actions and move the vehicles #
 		collision_array = {k: self.vehicles[k].move(fleet_actions[k], valid=valid) for k, valid in zip(list(fleet_actions.keys()), self_colliding_mask)}
 		# Update vector with agent positions #
@@ -238,6 +240,7 @@ class MultiagentInformationGathering:
 				 state_index_stacking = (0,1,2,3,4),
 				 local = True,
 				 reward_type = 'changes_mu',
+				 collitions_within = True,
 				 ):
 		
 		""" 
@@ -263,6 +266,10 @@ class MultiagentInformationGathering:
 		self.seed = seed
 		np.random.seed(seed)
 		
+		# REV1
+		self.error_normalized = True
+		self.trajectory_history = True
+		
 		# Set the variables
 		self.scenario_map = scenario_map
 		self.visitable_locations = np.vstack(np.where(self.scenario_map != 0)).T
@@ -274,6 +281,7 @@ class MultiagentInformationGathering:
 		self.ground_truth_type = ground_truth_type
 		self.fleet_initial_zones = fleet_initial_zones
 		self.reward_type = reward_type
+		self.collitions_within = collitions_within
 
 		self.max_steps = self.distance_budget // self.movement_length
 		
@@ -293,7 +301,8 @@ class MultiagentInformationGathering:
 								   n_actions=8,
 								   fleet_initial_positions=self.initial_positions,
 								   movement_length=movement_length,
-								   navigation_map=self.scenario_map)
+								   navigation_map=self.scenario_map,
+								   collisions_within_flag=self.collitions_within,)
 
 		# Ground truth selection
 		if ground_truth_type == 'shekel':
@@ -451,8 +460,14 @@ class MultiagentInformationGathering:
 			agent_observation_of_fleet[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 0.0
 
 			agent_observation_of_position = np.zeros_like(self.scenario_map)
-			agent_observation_of_position[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 1.0
 			
+			if self.trajectory_history:
+
+				historic_weight = np.linspace(0, 1.0, len(self.fleet.vehicles[i].waypoints[-self.max_steps//2:]))
+				agent_observation_of_position[self.fleet.vehicles[i].waypoints[-self.max_steps//2:,0], self.fleet.vehicles[i].waypoints[-self.max_steps//2:,1]] = historic_weight
+
+			agent_observation_of_position[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 1.0
+
 			state[i] = np.concatenate((
 				np.clip(mu_map[np.newaxis], 0, 1),
 				sigma_map[np.newaxis],
@@ -582,7 +597,7 @@ class MultiagentInformationGathering:
 			self.im4 = self.axs[0].plot(self.gp_coordinator.x[:,1], self.gp_coordinator.x[:,0], 'gx', markersize=5)
 			# Scatterplot with the position of the agents. Every agent position is in a different color
 			colors = ['red', 'blue', 'orange', 'yellow', 'green', 'purple', 'pink', 'brown', 'gray', 'olive']
-			self.impos = self.axs[5].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, self.number_of_agents), markersize=5)
+			self.impos = self.axs[5].plot(self.fleet.agent_positions[:,1], self.fleet.agent_positions[:,0], 'o', c=np.linspace(0, 1, 3), markersize=5)
 			# Add text with the agent id
 			self.agnumtext = []
 			for i in range(self.number_of_agents):
@@ -625,6 +640,10 @@ class MultiagentInformationGathering:
 		
 		# Compute the error #
 		error = np.sum(np.abs((self.gt.read() - self.gp_coordinator.mu_map)))
+
+		if self.error_normalized:
+			error = error / np.sum(self.gt.read())
+
 		return error
 		
 		
@@ -644,19 +663,19 @@ if __name__ == '__main__':
 	N = 3
 	D = 7
 	# Generate initial positions with squares of size 3 x 3 around positions
-	#center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
+	center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
 	# 9 positions in the sorrounding of the center
-	#area_initial_zones = np.array([[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]])
+	area_initial_zones = np.array([[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]])
 	# Generate the initial positions with the sum of the center and the area
-	#fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
+	fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
 
-	scenario_map = np.ones((35,35))
-	scenario_map[0:2,:] = 0
-	scenario_map[-2:,:] = 0
-	scenario_map[:,0:2] = 0
-	scenario_map[:,-2:] = 0
+	#scenario_map = np.ones((35,35))
+	#scenario_map[0:2,:] = 0
+	#scenario_map[-2:,:] = 0
+	#scenario_map[:,0:2] = 0
+	#scenario_map[:,-2:] = 0
 
-	center_initial_zones = np.array([[5,35-5], [5, 35-15], [5,35-25]])
+	#center_initial_zones = np.array([[5,35-5], [5, 35-15], [5,35-25]])
 
 	env = MultiagentInformationGathering(
 			scenario_map = scenario_map, #scenario_map,
@@ -670,7 +689,7 @@ if __name__ == '__main__':
 			seed = 5,
 			movement_length = 2,
 			max_collisions = 1,
-			ground_truth_type = 'wildfires',
+			ground_truth_type = 'shekel',
 			local = True,
 			reward_type='changes_sigma',
 	)
@@ -703,7 +722,7 @@ if __name__ == '__main__':
 		return actions
 
 	lawn_mower_agents = [LawnMowerAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, forward_direction = 0, seed=seed) for _ in range(N)]
-	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 3, seed=seed) for _ in range(N)]
+	random_wandering_agents = [WanderingAgent(world = scenario_map, number_of_actions = 8, movement_length = 2, seed=seed, consecutive_movements=2) for _ in range(N)]
 
 	for _ in range(5):
 
@@ -725,7 +744,7 @@ if __name__ == '__main__':
 		runtime = 0
 		while not any(list(done.values())):
 			
-			action = {i: lawn_mower_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
+			action = {i: random_wandering_agents[i].move(env.fleet.vehicles[i].position) for i in range(N)}
 
 			q_values = np.zeros((N, env.action_space.n)) + 0.5
 			for i, a in action.items():

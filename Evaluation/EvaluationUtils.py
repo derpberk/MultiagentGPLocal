@@ -8,6 +8,10 @@ from matplotlib.collections import LineCollection
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from tqdm import trange
 import pandas as pd
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+
 
 def find_peaks(data:np.ndarray, neighborhood_size: int = 5, threshold: float = 0.1) -> np.ndarray:
 	""" Find the peaks in a 2D image using the local maximum filter. """
@@ -48,6 +52,24 @@ def plot_path(path: np.ndarray, axs = None, title: str = ''):
 
 def plot_trajectory(ax, x, y, z=None, colormap = 'jet', num_of_points = None, linewidth = 1, k = 3, plot_waypoints=False, markersize = 0.5, alpha=1, zorder=1, s=0.0):
 
+	# Remove consecuitve duplicates values of XYZ #
+	if z is None:
+		path = np.array([x,y]).T
+	else:
+		path = np.array([x,y,z]).T
+
+	for i in range(path.shape[0]-1, 0, -1):
+		if np.array_equal(path[i], path[i-1]):
+			path = np.delete(path, i, axis=0)
+	
+	x = path[:,0]
+	y = path[:,1]
+	if z is not None:
+		z = path[:,2]
+
+
+
+
 	if z is None:
 		tck, u = interpolate.splprep([x, y], s=s, k=k)
 		x_i, y_i= interpolate.splev(np.linspace(0,1,num_of_points),tck)
@@ -87,9 +109,12 @@ def run_evaluation(path: str, agent, algorithm: str, reward_type: str, runs: int
 			'$\Delta \mu$': [], 
 			'$\Delta \sigma$': [], 
 			'Total uncertainty': [],
-			'Error $\mu$': [], 
+			'Error $\mu$': [],
 			'Max. Error in $\mu_{max}$': [], 
-			'Mean Error in $\mu_{max}$': []}
+			'Mean Error in $\mu_{max}$': [],
+			'SOP GLOBAL GP':[],
+			'MSE GLOBAL GP':[],
+			'R2 GLOBAL GP':[],}
 	
 	for i in range(n_agents): 
 		metrics['Agent {} X '.format(i)] = []
@@ -122,14 +147,17 @@ def run_evaluation(path: str, agent, algorithm: str, reward_type: str, runs: int
 		metrics['N_agents'].append(n_agents)
 		metrics['Ground Truth'].append(ground_truth_type)
 		metrics['Mean distance'].append(0)
-		U0 = agent.env.gp_coordinator.sigma_map.sum()
-		metrics['Total uncertainty'].append(agent.env.gp_coordinator.sigma_map.sum() / U0)
+		metrics['Total uncertainty'].append(agent.env.gp_coordinator.sigma_map[agent.env.gp_coordinator.X[:,0], agent.env.gp_coordinator.X[:,1]].mean())
 		metrics['$\Delta \mu$'].append(0)
 		metrics['$\Delta \sigma$'].append(0)
 		metrics['Error $\mu$'].append(agent.env.get_error())
 		metrics['Max. Error in $\mu_{max}$'].append(1)
 		metrics['Mean Error in $\mu_{max}$'].append(1)
+
 		peaks, vals = find_peaks(agent.env.gt.read())
+		if peaks.shape[0] == 0:
+			peaks, vals = find_peaks(agent.env.gt.read(), threshold=0.3)
+
 		positions = agent.env.fleet.get_positions()
 		for i in range(n_agents): 
 			metrics['Agent {} X '.format(i)].append(positions[i,0])
@@ -177,15 +205,22 @@ def run_evaluation(path: str, agent, algorithm: str, reward_type: str, runs: int
 			metrics['$\Delta \mu$'].append(changes_mu.sum())
 			metrics['$\Delta \sigma$'].append(changes_sigma.sum())
 			# Incertidumbre total aka entropía
-			metrics['Total uncertainty'].append(agent.env.gp_coordinator.sigma_map.sum() / U0)
+			metrics['Total uncertainty'].append(agent.env.gp_coordinator.sigma_map[agent.env.gp_coordinator.X[:,0], agent.env.gp_coordinator.X[:,1]].mean())
 			# Error en el mu
 			metrics['Error $\mu$'].append(agent.env.get_error())
 			# Error en el mu max
 			peaks, vals = find_peaks(agent.env.gt.read())
-			estimated_vals = agent.env.gp_coordinator.mu_map[peaks[:,0], peaks[:,1]]
+			if peaks.shape[0] == 0:
+
+				peaks = np.unravel_index(np.argmax(agent.env.gt.read()), agent.env.gt.read().shape) 
+				vals = agent.env.gt.read()[peaks[0], peaks[1]]
+				#peaks, vals = find_peaks(agent.env.gt.read(), threshold=0.8)
+				estimated_vals = agent.env.gp_coordinator.mu_map[peaks[0], peaks[1]]
+			else:
+				estimated_vals = agent.env.gp_coordinator.mu_map[peaks[:,0], peaks[:,1]]
 			error = np.abs(estimated_vals - vals)
-			metrics['Max. Error in $\mu_{max}$'].append(error.max())
-			metrics['Mean Error in $\mu_{max}$'].append(error.mean())
+			metrics['Max. Error in $\mu_{max}$'].append(np.max(error))
+			metrics['Mean Error in $\mu_{max}$'].append(np.mean(error.mean()))
 
 			positions = agent.env.fleet.get_positions()
 			for i in range(n_agents): 
@@ -198,8 +233,24 @@ def run_evaluation(path: str, agent, algorithm: str, reward_type: str, runs: int
 		if render:
 			plt.show()
 
+		# Compute the final error using all the points in the map #
+		gp_unique = GaussianProcessRegressor(kernel=C(1.0, (1e-3, 1e3)) * RBF(1.0, (1e-2, 1e3)), n_restarts_optimizer=10)
+		gp_unique.fit(agent.env.gp_coordinator.x, agent.env.gp_coordinator.y)
+		mu_global = gp_unique.predict(agent.env.gp_coordinator.X)
+		real_values = agent.env.gt.read()[agent.env.gp_coordinator.X[:,0], agent.env.gp_coordinator.X[:,1]]
+		sop_GLOBAL_GP = np.abs(mu_global - real_values).sum()
+		mse_GLOBAL_GP = mean_squared_error(mu_global, real_values)
+		r2_GLOBAL_GP = r2_score(mu_global, real_values)
+
+		# Add the final error to the metrics #
+		metrics['SOP GLOBAL GP'].extend([sop_GLOBAL_GP] * (step + 1))
+		metrics['MSE GLOBAL GP'].extend([mse_GLOBAL_GP] * (step + 1))
+		metrics['R2 GLOBAL GP'].extend([r2_GLOBAL_GP] * (step + 1))
+
 
 	df = pd.DataFrame(metrics)
+
+
 
 	df.to_csv(path + '/{}_{}_{}_{}.csv'.format(algorithm, ground_truth_type, reward_type, n_agents))
 

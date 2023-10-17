@@ -8,24 +8,7 @@ from tqdm import trange
 from EvaluationUtils import run_evaluation
 
 
-""" Create the parser to parse N_episodes, N_agents, and the path to the model """
-parser = argparse.ArgumentParser()
-parser.add_argument('--N_episodes', type=int, default=2, help='Number of episodes to evaluate the policy')
-parser.add_argument('--N_agents', type=int, default=3, help='Number of agents in the environment')
-parser.add_argument('--path', type=str, default='Evaluation/FinalPolicy_algae.pth', help='Path to the model')
-parser.add_argument('--reward', type=str, default='changes_mu', help='Type of the reward', choices=['changes_mu', 'changes_sigma'])
-parser.add_argument('--gt', type=str, default='algae_bloom', help='Ground truth str')
-
-
-N_EPISODES = parser.parse_args().N_episodes
-N_AGENTS = parser.parse_args().N_agents
-PATH = parser.parse_args().path
-reward_type = parser.parse_args().reward
-ground_truth_type = parser.parse_args().gt
 scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
-
-
-N = N_AGENTS
 D = 7
 # Generate initial positions with squares of size 3 x 3 around positions
 center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
@@ -33,9 +16,17 @@ center_initial_zones = np.array([[17,9], [22,8], [28,9]])
 area_initial_zones = np.array([[-1,-1], [-1,0], [-1,1], [0,-1], [0,0], [0,1], [1,-1], [1,0], [1,1]])
 # Generate the initial positions with the sum of the center and the area
 fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for i in range(len(center_initial_zones))])
+
+N_agents = 3
+N_EPISODES = 1
+reward_type = 'changes_sigma'
+ground_truth_type = 'algae_bloom'
+
+PATH = f'runs/DuelingDQN_{ground_truth_type}_{reward_type}_{N_agents}_vehicles/FinalPolicy.pth'
+
 env = MultiagentInformationGathering(
 			scenario_map = scenario_map,
-			number_of_agents = N,
+			number_of_agents = N_agents,
 			distance_between_locals = D,
 			radius_of_locals = np.sqrt(2) * D / 2,
 			distance_budget = 100,
@@ -49,6 +40,7 @@ env = MultiagentInformationGathering(
 			local = True,
 			reward_type = reward_type
 )
+
 
 agent = MultiAgentDuelingDQNAgent(env = env,
 			memory_size = 1_000,
@@ -76,15 +68,21 @@ agent = MultiAgentDuelingDQNAgent(env = env,
 
 agent.load_model(PATH)
 
-
-run_evaluation(path='Evaluation/EvaluationRuns/', 
+run_evaluation(path='Evaluation/PathsAndDemostrations/', 
 				agent=agent,
-				algorithm='DDQN',
+				algorithm='Dueling DDQN',
 				reward_type=reward_type,
 				ground_truth_type=ground_truth_type,
 				runs=N_EPISODES,
-				n_agents=N_AGENTS,
+				n_agents=N_agents,
 				render=False)
 
 
+np.save(f'Evaluation/PathsAndDemostrations/gt_{reward_type}_{ground_truth_type}_seed_42.npy', agent.env.gt.read())
+np.save(f'Evaluation/PathsAndDemostrations/mu_{reward_type}_{ground_truth_type}_seed_42.npy', agent.env.gp_coordinator.mu_map)
 
+points = np.asarray([veh.waypoints for veh in agent.env.fleet.vehicles])
+np.save(f'Evaluation/PathsAndDemostrations/points_{reward_type}_{ground_truth_type}_seed_42.npy', points)
+
+
+print("Done")

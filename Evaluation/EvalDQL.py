@@ -27,21 +27,23 @@ env = MultiagentInformationGathering(
 			seed = 42,
 			movement_length = 2,
 			max_collisions = 5,
-			ground_truth_type = 'algae_bloom',
+			ground_truth_type = 'shekel',
 			local = True
 )
 
 agent = MultiAgentDuelingDQNAgent(env = env,
-			memory_size = 500_000,
+			memory_size = 10_000,
 			batch_size = 64,
 			target_update = 1000,
             number_of_features=512,
             masked_actions=True,
             device='cuda:0')
 
-agent.load_model('Evaluation/FinalPolicy_algae.pth')
+agent.load_model(r'.\runs\DuelingDQN_shekel_changes_sigma_3_vehicles\FinalPolicy.pth')
 
-res = agent.evaluate_env(50, render = True)
+res = agent.evaluate_env(1, render = False)
+
+agent.env.render()
 
 print(res)
 

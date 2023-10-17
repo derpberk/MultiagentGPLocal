@@ -14,7 +14,7 @@ scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
 D = 7
 # Generate initial positions with squares of size 3 x 3 around positions
 center_initial_zones = np.array([[17,9], [22,8], [28,9]]) 
-seed = 0
+seed = 42
 
 for gt_name in ['algae_bloom', 'shekel']:
 
@@ -26,7 +26,7 @@ for gt_name in ['algae_bloom', 'shekel']:
 	for N_agents in range(1, 4):
 
 
-		N_EPISODES = 20
+		N_EPISODES = 300
 		reward_type = 'changes_mu'
 		ground_truth_type = gt_name
 
@@ -35,11 +35,11 @@ for gt_name in ['algae_bloom', 'shekel']:
 				 ground_truth = ground_truth, 
 				 max_distance=100, 
 				 initial_positions= center_initial_zones[:N_agents], 
-				 parameters=(0.5, 0.5, 0.5, 0.5, 0.5))
+				 parameters=(1, 2.0187, 0, 3.2697, 0))
 
-		run_evaluation(path=f'Evaluation/EvaluationRuns/', 
+		run_evaluation(path=f'Evaluation/EvaluationRuns_REV1/', 
 						agent=agent, 
-						algorithm = 'ParticleSwarm',
+						algorithm = 'ParticleSwarmExplore',
 						runs = N_EPISODES, 
 						n_agents = N_agents, 
 						ground_truth_type = ground_truth_type, 

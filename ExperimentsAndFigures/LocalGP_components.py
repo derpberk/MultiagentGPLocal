@@ -11,6 +11,10 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import time
 from tqdm import trange
+from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.neighbors import KNeighborsRegressor 
+
 
 scenario_map = np.genfromtxt('Environment/Maps/example_map.csv')
 N = 3
@@ -24,26 +28,33 @@ fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for
 
 
 RUN = 0
-COMPUTE = True
+COMPUTE = False
 SAVE = True
 rows = []
 ALGORITHMS = ['NRRA', 'LawnMower']
-RUNS = 5
+RUNS = 50
+
+
 
 if COMPUTE: 
 
-	for method, distance_between_locals, radius_of_locals in zip(['Local GP', 'Global GP'], [D,25],[np.sqrt(2) * D / 2,10000]):
-	
-		for algorithm in [ALGORITHMS[0]]:
-				
-			np.random.seed(0)
+	for method, distance_between_locals, radius_of_locals in zip(['Local GP', 'Global GP', 'Decision Tree', 'KNN'], [D,30,30,30],[np.sqrt(2) * D / 2, 10000, 10000,10000]):
+		
+		if method == "KNN":
+			model = KNeighborsRegressor(n_neighbors=5)
+		elif method == "Decision Tree":
+			model = DecisionTreeRegressor(max_depth=10)
 
+		for algorithm in ALGORITHMS:
+
+			np.random.seed(0)
+			
 			env = MultiagentInformationGathering(
 					scenario_map = scenario_map,
 					number_of_agents = N,
 					distance_between_locals = distance_between_locals,
 					radius_of_locals = radius_of_locals,
-					distance_budget = 150,
+					distance_budget = 100,
 					distance_between_agents = 1,
 					fleet_initial_zones=fleet_initial_zones,
 					fleet_initial_positions=None,
@@ -82,10 +93,18 @@ if COMPUTE:
 					Racc += np.sum(list(reward.values()))
 
 					# Plot the results
-				
-					rows.append([algorithm, RUN, STEP, Racc, env.get_error(), method, t1-t0, env.gt.read().flatten(), env.gp_coordinator.mu_map.flatten(), env.gp_coordinator.sigma_map.flatten(), env.fleet.get_positions().flatten()])
 
-			
+					if method not in ["Decision Tree", "KNN"]:
+						rows.append([algorithm, RUN, STEP, Racc, env.get_error(), method, t1-t0, env.gt.read().flatten(), env.gp_coordinator.mu_map.flatten(), env.gp_coordinator.sigma_map.flatten(), env.fleet.get_positions().flatten()])
+					else:
+						t0 = time.time()
+						Y_map = np.zeros_like(scenario_map)
+						model.fit(env.gp_coordinator.x, env.gp_coordinator.y.flatten())
+						Y_pred = model.predict(env.gp_coordinator.X)
+						Y_map[env.gp_coordinator.X[:,0], env.gp_coordinator.X[:,1]] = Y_pred
+						error = np.sum(np.abs((env.gt.read() - Y_map)))
+						t1 = time.time()
+						rows.append([algorithm, RUN, STEP, Racc, error, method, t1-t0, env.gt.read().flatten(), env.gp_coordinator.mu_map.flatten(), env.gp_coordinator.sigma_map.flatten(), env.fleet.get_positions().flatten()])
 
 
 	df = pd.DataFrame(rows, columns=['Algorithm', 'Run', 'Step', 'Rewards', 'Error', 'GP method', 'Execution time', ' GT', 'Mu', 'Sigma', 'Agent positions'])
@@ -99,19 +118,17 @@ sns.set_theme(style="darkgrid")
 
 df["Accumulated Execution time"] = df.groupby(["Algorithm", "Run", "GP method"])["Execution time"].cumsum()
 
-# Substract 13 to the error in Step == 25 for GP method == 'Local GP'
-df.loc[(df['Step'] == 25) & (df['GP method'] == 'Local GP'), 'Error'] = df.loc[(df['Step'] == 25) & (df['GP method'] == 'Local GP'), 'Error'] - 8
 
-sns.lineplot(x="Step", y="Error", hue="GP method", data=df, lw=2)
-plt.ylabel('Average sum of residuals (SoR)')
+sns.lineplot(x="Step", y="Accumulated Execution time", hue="GP method", data=df, lw=2)
+plt.ylabel('Accumulated Execution time (s)')
 
+plt.show()
 
-"""
 # Plot linear regression
-sns.regplot(x="Step", y="Accumulated Execution time", data=df[df['GP method'] == 'Local GP'], scatter=False, color='black', label='Linear Regression', line_kws={'linestyle':'--', 'alpha':0.5, 'linewidth':1})
+#sns.regplot(x="Step", y="Accumulated Execution time", data=df[df['GP method'] == 'Local GP'], scatter=False, color='black', label='Linear Regression', line_kws={'linestyle':'--', 'alpha':0.5, 'linewidth':1})
 # Plot cubic regression
-sns.regplot(x="Step", y="Accumulated Execution time", data=df[df['GP method'] == 'Global GP'], order=3, scatter=False, color='black', label='Cubic regression', line_kws={'linestyle':'-.', 'alpha':0.5, 'linewidth': 1})
-"""
+#sns.regplot(x="Step", y="Accumulated Execution time", data=df[df['GP method'] == 'Global GP'], order=3, scatter=False, color='black', label='Cubic regression', line_kws={'linestyle':'-.', 'alpha':0.5, 'linewidth': 1})
+
 plt.legend(loc='upper right')
 plt.show()
 

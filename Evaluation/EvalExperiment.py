@@ -22,16 +22,16 @@ fleet_initial_zones = np.array([area_initial_zones + center_initial_zones[i] for
 
 for gt in ['algae_bloom', 'shekel']:
 
-    for reward_type in ['changes_mu', 'changes_sigma']:
+    for reward_type in ['changes_mu']:
 
         for N_agents in range(1, 4):
 
 
-            N_EPISODES = 20
+            N_EPISODES = 300
             reward_type = reward_type
             ground_truth_type = gt
 
-            PATH = f'runs/DuelingDQN_{ground_truth_type}_{reward_type}_{N_agents}_vehicles/FinalPolicy.pth'
+            PATH = f'runs/DuelingDDQN_{ground_truth_type}_{reward_type}_{N_agents}_vehicles/FinalPolicy.pth'
             
             env = MultiagentInformationGathering(
                         scenario_map = scenario_map,
@@ -42,7 +42,7 @@ for gt in ['algae_bloom', 'shekel']:
                         distance_between_agents = 1,
                         fleet_initial_zones=fleet_initial_zones,
                         fleet_initial_positions=None,
-                        seed = 42,
+                        seed = 0,
                         movement_length = 2,
                         max_collisions = 5,
                         ground_truth_type = ground_truth_type,
@@ -57,7 +57,7 @@ for gt in ['algae_bloom', 'shekel']:
                         soft_update = True,
                         tau = 0.001,
                         epsilon_values = [1.0, 0.05],
-                        epsilon_interval = [0.0, 0.5],
+                        epsilon_interval = [0.05, 0.5],
                         learning_starts = 100,
                         gamma = 0.99,
                         lr = 1e-4,
@@ -76,9 +76,9 @@ for gt in ['algae_bloom', 'shekel']:
 
             agent.load_model(PATH)
 
-            run_evaluation(path='Evaluation/EvaluationRuns/', 
+            run_evaluation(path=f'Evaluation/EvaluationRuns_REV1/', 
                             agent=agent,
-                            algorithm='Dueling DQN',
+                            algorithm='Dueling DDQN',
                             reward_type=reward_type,
                             ground_truth_type=ground_truth_type,
                             runs=N_EPISODES,

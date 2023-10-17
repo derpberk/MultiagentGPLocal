@@ -15,7 +15,7 @@ class ParticleSwarmOptimizer:
 		self.navigation_map = navigation_map
 		self.ground_truth = ground_truth
 		self.max_distance = max_distance
-		self.GP = GaussianProcessRegressor(kernel=ConstantKernel(1.0) * RBF(5.0, length_scale_bounds=(0.5, 100)) + W(0.001), n_restarts_optimizer=1, alpha=0.0001)
+		self.GP = GaussianProcessRegressor(kernel=ConstantKernel(1.0) * RBF(5.0, length_scale_bounds=(0.5, 100)) + W(0.001), n_restarts_optimizer=1, alpha=0.001)
 		self.mu_map = np.zeros_like(navigation_map)
 		self.sigma_map = np.zeros_like(navigation_map)
 		self.visitable_positions = np.argwhere(navigation_map == 1)
@@ -24,13 +24,43 @@ class ParticleSwarmOptimizer:
 
 		self.w, self.c1, self.c2, self.c3, self.c4 = parameters
 
+		self.fig = None
+
+
+	def render(self):
+
+		if self.fig is None:
+
+			plt.ion()
+			self.fig, self.axs = plt.subplots(1, 2)
+
+			self.axs[0].imshow(self.navigation_map, cmap='gray', alpha = 1-self.navigation_map, zorder = 10)
+			self.axs[1].imshow(self.navigation_map, cmap='gray', alpha = 1-self.navigation_map, zorder = 10)
+			self.axs[1].imshow(self.ground_truth.read(), cmap='viridis', zorder = 1)
+
+			self.d1 = self.axs[0].imshow(self.mu_map, cmap='viridis', vmin=0, vmax=1, zorder=1)
+			self.d2, = self.axs[0].plot(self.positions[:,1], self.positions[:,0], 'o', color='red', zorder=20)
+
+
+		else:
+
+			self.d1.set_data(self.mu_map)
+			self.d2.set_data(self.positions[:,1], self.positions[:,0])
+
+		self.fig.canvas.draw()
+		self.fig.canvas.flush_events()
+		plt.pause(0.1)
+
+
 	def reset(self):
 
 		self.mu_map = np.zeros_like(self.navigation_map)
 		self.sigma_map = np.zeros_like(self.navigation_map)
-		self.positions = self.initial_positions
+		self.positions = self.initial_positions.copy()
 		self.velocities = np.zeros_like(self.positions)
 		self.distances = np.zeros(self.n_agents)
+
+		self.fig = None
 
 		self.ground_truth.reset()
 
@@ -46,12 +76,12 @@ class ParticleSwarmOptimizer:
 		self.best_global_value = np.max(self.values)
 
 		# Initialize the GP
-		self.GP.fit(self.positions, self.values)
+		self.GP.fit(self.gp_positions, self.gp_values)
 
 		# Get the initial uncertainty
 		self.mu, self.sigma = self.GP.predict(self.visitable_positions, return_std=True)
-		self.mu_map[self.visitable_positions[:,0], self.visitable_positions[:,1]] = self.mu
-		self.sigma_map[self.visitable_positions[:,0], self.visitable_positions[:,1]] = self.sigma
+		self.mu_map[self.visitable_positions[:,0], self.visitable_positions[:,1]] = self.mu.reshape(-1)
+		self.sigma_map[self.visitable_positions[:,0], self.visitable_positions[:,1]] = self.sigma.reshape(-1)
 
 		self.done = False
 
@@ -76,7 +106,7 @@ class ParticleSwarmOptimizer:
 		distance_to_highest_mu = self.visitable_positions[np.argmax(self.mu)] - self.positions
 		distance_to_highest_mu = distance_to_highest_mu / (np.linalg.norm(distance_to_highest_mu, axis=1)[:,None]  + 1e-8)
 
-		self.velocities = self.w * self.velocities + r1 * distances_to_best_global + r2 * distance_to_best_local + r3 * distance_to_highest_uncertainty + r4 * distance_to_highest_mu
+		self.velocities = self.w * self.velocities + r2 * distances_to_best_global + r1 * distance_to_best_local + r3 * distance_to_highest_uncertainty + r4 * distance_to_highest_mu
 
 		# Update the positions
 		self.velocities = self.clip_velocities(0.05*self.velocities)
@@ -149,7 +179,7 @@ class ParticleSwarmOptimizer:
 		return velocities
 	
 	def get_error(self):
-		return np.sum(np.abs(self.mu_map - self.ground_truth.read()))
+		return np.sum(np.abs(self.mu_map - self.ground_truth.read())) / self.ground_truth.read().sum()
 	
 
 def run_evaluation(path: str, agent, algorithm: str, runs: int, n_agents: int, ground_truth_type: str, render = False):
@@ -242,7 +272,7 @@ def run_evaluation(path: str, agent, algorithm: str, runs: int, n_agents: int, g
 			metrics['$\Delta \mu$'].append(changes_mu)
 			metrics['$\Delta \sigma$'].append(changes_sigma)
 			# Incertidumbre total aka entropía
-			metrics['Total uncertainty'].append(agent.sigma_map / U0)
+			metrics['Total uncertainty'].append(agent.sigma_map.sum() / U0)
 			# Error en el mu
 			metrics['Error $\mu$'].append(agent.get_error())
 			# Error en el mu max
@@ -264,17 +294,16 @@ def run_evaluation(path: str, agent, algorithm: str, runs: int, n_agents: int, g
 
 			metrics['Accumulated Reward'].append(acc_reward)
 
-		if render:
-			plt.show()
-
 
 	df = pd.DataFrame(metrics)
 
 	df.to_csv(path + '/{}_{}_{}.csv'.format(algorithm, ground_truth_type, n_agents))
 
+	return df
 
-	
-	
+
+
+
 
 
 
