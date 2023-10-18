@@ -1,6 +1,6 @@
 ## A Deep Reinforcement Learning framework for Multi-agent Environmental Information Gathering with Local Gaussian Processes for Water Monitoring
 
-![Operative Scheme](Images/scheme.png){width=150 height=150}
+![Operative Scheme](./Images/scheme.png){width=150 height=150}
 
 Abstract
 
