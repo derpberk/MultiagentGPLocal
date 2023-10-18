@@ -15,7 +15,7 @@ class ParticleSwarmOptimizer:
 		self.navigation_map = navigation_map
 		self.ground_truth = ground_truth
 		self.max_distance = max_distance
-		self.GP = GaussianProcessRegressor(kernel=ConstantKernel(1.0) * RBF(5.0, length_scale_bounds=(0.5, 100)) + W(0.001), n_restarts_optimizer=1, alpha=0.001)
+		self.GP = GaussianProcessRegressor(kernel=ConstantKernel(1.0) * RBF(100.0, length_scale_bounds=(0.5, 10000)), n_restarts_optimizer=1, alpha=0.001)
 		self.mu_map = np.zeros_like(navigation_map)
 		self.sigma_map = np.zeros_like(navigation_map)
 		self.visitable_positions = np.argwhere(navigation_map == 1)
@@ -277,14 +277,17 @@ def run_evaluation(path: str, agent, algorithm: str, runs: int, n_agents: int, g
 			metrics['Error $\mu$'].append(agent.get_error())
 			# Error en el mu max
 			peaks, vals = find_peaks(agent.ground_truth.read())
-			if len(peaks) == 0:
-				metrics['Max. Error in $\mu_{max}$'].append(0)
-				metrics['Mean Error in $\mu_{max}$'].append(0)
+			if peaks.shape[0] == 0:
+
+				peaks = np.unravel_index(np.argmax(agent.ground_truth.read()), agent.ground_truth.read().shape) 
+				vals = agent.ground_truth.read()[peaks[0], peaks[1]]
+				estimated_vals = agent.mu_map[peaks[0], peaks[1]]
 			else:
 				estimated_vals = agent.mu_map[peaks[:,0], peaks[:,1]]
-				error = np.abs(estimated_vals - vals)
-				metrics['Max. Error in $\mu_{max}$'].append(error.max())
-				metrics['Mean Error in $\mu_{max}$'].append(error.mean())
+
+			error = np.abs(estimated_vals - vals)
+			metrics['Max. Error in $\mu_{max}$'].append(error.max())
+			metrics['Mean Error in $\mu_{max}$'].append(error.mean())
 
 			positions = agent.positions
 			for i in range(n_agents): 
