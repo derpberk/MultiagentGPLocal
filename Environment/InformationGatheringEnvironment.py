@@ -268,7 +268,7 @@ class MultiagentInformationGathering:
 		
 		# REV1
 		self.error_normalized = True
-		self.trajectory_history = True
+		self.trajectory_history = False
 		
 		# Set the variables
 		self.scenario_map = scenario_map
